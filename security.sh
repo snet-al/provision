@@ -25,23 +25,18 @@ sudo ufw --force enable
 sudo dpkg-reconfigure -plow unattended-upgrades
 
 # Configure Fail2ban
-sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
-sudo tee /etc/fail2ban/jail.local > /dev/null << EOL
-[DEFAULT]
-bantime = 1h
-findtime = 10m
-maxretry = 5
-
+echo "Configuring Fail2ban..."
+sudo mkdir -p /etc/fail2ban/jail.d
+sudo tee /etc/fail2ban/jail.d/sshd-hardening.conf > /dev/null << 'EOF'
 [sshd]
-enabled = true
-port = ssh
-filter = sshd
-logpath = /var/log/auth.log
+enabled  = true
 maxretry = 3
-EOL
+bantime  = 1h
+findtime = 10m
+EOF
 
 # Start and enable Fail2ban
-sudo systemctl start fail2ban
+sudo systemctl restart fail2ban
 sudo systemctl enable fail2ban
 
 # Secure shared memory

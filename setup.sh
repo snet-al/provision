@@ -25,6 +25,10 @@ echo "Basic system setup complete."
 echo "Applying security hardening..."
 sudo ./security.sh
 
+# Execute additional security configurations
+echo "Applying additional security configurations..."
+sudo ./extras.sh
+
 # Create forge user
 echo "Creating forge user..."
 ./create_user.sh
