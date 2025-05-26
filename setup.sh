@@ -21,12 +21,17 @@ sudo apt install -y \
 
 echo "Basic system setup complete."
 
-# Execute Docker installation
-echo "Installing Docker..."
-sudo ./docker.sh
-
 # Execute Security hardening
 echo "Applying security hardening..."
 sudo ./security.sh
 
+# Create forge user
+echo "Creating forge user..."
+./create_user.sh
+
+# Execute Docker installation last
+echo "Installing Docker..."
+sudo ./docker.sh
+
 echo "All installations and configurations complete. Please restart your system."
+echo "After restart, you can login as the forge user."
