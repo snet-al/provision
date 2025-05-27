@@ -41,6 +41,15 @@ validate_ssh_key() {
     return 0
 }
 
+# Function to validate key name
+validate_key_name() {
+    local name=$1
+    if ! echo "$name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+        return 1
+    fi
+    return 0
+}
+
 # Ensure SSH key is set up
 echo "Checking SSH key configuration..."
 MAX_ATTEMPTS=3
@@ -54,13 +63,25 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ] && [ "$SSH_KEY_CONFIGURED" = false ]; do
     else
         echo "No SSH key found for forge user. This is required for secure SSH access."
         echo "Attempt $ATTEMPT of $MAX_ATTEMPTS"
+        
+        # Get key name
+        while true; do
+            read -p "Enter a name for this SSH key (e.g., laptop, work, deploy): " key_name
+            if validate_key_name "$key_name"; then
+                break
+            else
+                echo "Invalid key name. Use only letters, numbers, underscore, and hyphen."
+            fi
+        done
+        
+        # Get SSH key
         read -p "Please enter the SSH public key for the forge user: " ssh_key
         
         if validate_ssh_key "$ssh_key"; then
-            sudo -u forge ./add_ssh_key.sh "initial_key" "$ssh_key"
+            sudo -u forge ./add_ssh_key.sh "$key_name" "$ssh_key"
             if [ $? -eq 0 ]; then
                 SSH_KEY_CONFIGURED=true
-                echo "SSH key successfully configured for forge user."
+                echo "SSH key '$key_name' successfully configured for forge user."
             else
                 echo "Failed to add SSH key. Please try again."
             fi
@@ -76,7 +97,6 @@ if [ "$SSH_KEY_CONFIGURED" = false ]; then
     echo "Setup cannot continue without proper SSH access configuration."
     exit 1
 fi
-
 
 
 # Execute Security hardening if user gives permission
