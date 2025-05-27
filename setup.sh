@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Update package lists
+# Update package lists first
 sudo apt update
 
 # Add universe repository
@@ -21,21 +21,24 @@ sudo apt install -y \
 
 echo "Basic system setup complete."
 
-# Execute Security hardening
-echo "Applying security hardening..."
-sudo ./security.sh
-
-# Execute additional security configurations
-echo "Applying additional security configurations..."
-sudo ./extras.sh
-
-# Create forge user
+# Create forge user first
 echo "Creating forge user..."
 ./create_user.sh
 
+# Now run the rest of the setup as the forge user
+echo "Running remaining setup as forge user..."
+
+# Execute Security hardening
+echo "Applying security hardening..."
+sudo -u forge ./security.sh
+
+# Execute rate limiting and service binding
+echo "Applying rate limiting and service binding security..."
+sudo -u forge ./security_ratelimit.sh
+
 # Execute Docker installation last
 echo "Installing Docker..."
-sudo ./docker.sh
+sudo -u forge ./docker.sh
 
 echo "All installations and configurations complete. Please restart your system."
 echo "After restart, you can login as the forge user."

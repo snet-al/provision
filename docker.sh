@@ -22,12 +22,13 @@ sudo apt-get install -y \
   docker-buildx-plugin \
   docker-compose-plugin
 
-# Add user to docker group
-sudo groupadd docker
+# Create docker group and add current user (forge)
+sudo groupadd docker || true
 sudo usermod -aG docker $USER
 
 # Start Docker service
 sudo systemctl start docker
 sudo systemctl enable docker
 
-echo "Docker installation complete. Please log out and log back in for group changes to take effect." 
+echo "Docker installation complete. Docker access has been configured for $(whoami) user."
+echo "Please log out and log back in for group changes to take effect." 
