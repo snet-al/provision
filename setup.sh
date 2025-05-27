@@ -119,3 +119,5 @@ sudo -u forge ./docker.sh
 
 echo "All installations and configurations complete. Please restart your system."
 echo "After restart, you can login as the forge user using your SSH key."
+
+sudo -u forge ./after-setup.sh
