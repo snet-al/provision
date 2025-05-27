@@ -1,3 +1,6 @@
+#!/bin/bash
+
+# Function to validate SSH key
 validate_ssh_key() {
     local key=$1
     if ! echo "$key" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521) '; then
@@ -6,38 +9,37 @@ validate_ssh_key() {
     return 0
 }
 
-# Ensure SSH key is set up
-echo "Checking SSH key configuration..."
-MAX_ATTEMPTS=3
-ATTEMPT=1
-SSH_KEY_CONFIGURED=false
-
-while [ $ATTEMPT -le $MAX_ATTEMPTS ] && [ "$SSH_KEY_CONFIGURED" = false ]; do
-    if sudo -u forge test -f /home/forge/.ssh/authorized_keys && [ -s /home/forge/.ssh/authorized_keys ]; then
-        echo "Forge user already has SSH key(s) configured."
-        SSH_KEY_CONFIGURED=true
-    else
-        echo "No SSH key found for forge user. This is required for secure SSH access."
-        echo "Attempt $ATTEMPT of $MAX_ATTEMPTS"
-        read -p "Please enter the SSH public key for the forge user: " ssh_key
-        
-        if validate_ssh_key "$ssh_key"; then
-            sudo -u forge ./add_ssh_key.sh "initial_key" "$ssh_key"
-            if [ $? -eq 0 ]; then
-                SSH_KEY_CONFIGURED=true
-                echo "SSH key successfully configured for forge user."
-            else
-                echo "Failed to add SSH key. Please try again."
-            fi
-        else
-            echo "Invalid SSH key format. Key should start with 'ssh-rsa', 'ssh-ed25519', or 'ecdsa-sha2-*'"
-        fi
+# Function to validate key name
+validate_key_name() {
+    local name=$1
+    if ! echo "$name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+        return 1
     fi
-    ATTEMPT=$((ATTEMPT + 1))
+    return 0
+}
+
+# Get key name
+while true; do
+    read -p "Enter a name for this SSH key (e.g., laptop, work, deploy): " key_name
+    if validate_key_name "$key_name"; then
+        break
+    else
+        echo "Invalid key name. Use only letters, numbers, underscore, and hyphen."
+    fi
 done
 
-if [ "$SSH_KEY_CONFIGURED" = false ]; then
-    echo "Failed to configure SSH key after $MAX_ATTEMPTS attempts."
-    echo "Setup cannot continue without proper SSH access configuration."
+# Get SSH key
+read -p "Please enter the SSH public key: " ssh_key
+
+if validate_ssh_key "$ssh_key"; then
+    ./add_ssh_key.sh "$key_name" "$ssh_key"
+    if [ $? -eq 0 ]; then
+        echo "SSH key '$key_name' successfully added."
+    else
+        echo "Failed to add SSH key."
+        exit 1
+    fi
+else
+    echo "Invalid SSH key format. Key should start with 'ssh-rsa', 'ssh-ed25519', or 'ecdsa-sha2-*'"
     exit 1
 fi
