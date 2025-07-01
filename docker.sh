@@ -29,10 +29,48 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check internet connectivity
-    if ! ping -c 1 8.8.8.8 &>/dev/null; then
-        log_error "No internet connectivity detected. Docker cannot be downloaded."
-        exit 1
+    # Check internet connectivity with multiple methods
+    log "Checking internet connectivity..."
+    local connectivity_ok=false
+    
+    # Method 1: Try ping to Google DNS
+    if ping -c 1 8.8.8.8 &>/dev/null; then
+        connectivity_ok=true
+        log "Internet connectivity confirmed via ping to 8.8.8.8"
+    else
+        log "Ping to 8.8.8.8 failed, trying alternative methods..."
+        
+        # Method 2: Try curl to a reliable endpoint
+        if curl -s --connect-timeout 5 --max-time 10 https://httpbin.org/ip &>/dev/null; then
+            connectivity_ok=true
+            log "Internet connectivity confirmed via HTTPS to httpbin.org"
+        else
+            # Method 3: Try DNS resolution
+            if nslookup google.com &>/dev/null; then
+                connectivity_ok=true
+                log "Internet connectivity confirmed via DNS resolution"
+            else
+                # Method 4: Try apt update (which will fail gracefully if no internet)
+                if timeout 10 apt update &>/dev/null; then
+                    connectivity_ok=true
+                    log "Internet connectivity confirmed via apt update"
+                fi
+            fi
+        fi
+    fi
+    
+    if [[ "$connectivity_ok" = false ]]; then
+        log_error "No internet connectivity detected using multiple methods."
+        log_error "Docker cannot be downloaded without internet access."
+        
+        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log "Docker installation cancelled due to network connectivity issues"
+            exit 1
+        else
+            log "Continuing Docker installation without internet connectivity verification"
+        fi
     fi
 
     # Check if Docker is already installed
