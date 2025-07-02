@@ -68,4 +68,31 @@ if ! sudo chmod -R 750 "$SCRIPTS_DIR"; then
 fi
 
 log "Provisioning scripts copied to $SCRIPTS_DIR"
+
+# Check if user wants to configure Docker proxy
+log "Checking for Docker proxy configuration..."
+if [[ -f "configure-docker-proxy.sh" ]]; then
+    read -p "Do you want to configure Docker proxy settings? (y/n): " configure_proxy
+    if [[ "$configure_proxy" = "y" ]]; then
+        log "Running Docker proxy configuration..."
+        
+        # Make sure the script is executable
+        if [[ ! -x "configure-docker-proxy.sh" ]]; then
+            chmod +x "configure-docker-proxy.sh"
+        fi
+        
+        # Run the Docker proxy configuration script
+        if ./configure-docker-proxy.sh; then
+            log "Docker proxy configuration completed successfully"
+        else
+            log_error "Docker proxy configuration failed"
+            log_error "You can run it manually later: ./configure-docker-proxy.sh"
+        fi
+    else
+        log "Docker proxy configuration skipped by user choice"
+    fi
+else
+    log "Docker proxy configuration script not found (configure-docker-proxy.sh)"
+fi
+
 log "Post-setup file organization completed successfully"
