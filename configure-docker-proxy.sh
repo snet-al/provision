@@ -30,7 +30,5 @@ sudo systemctl restart docker
 
 # Verify Docker daemon environment
 echo "🔍 Verifying Docker daemon environment variables..."
-sudo systemctl show --property=Environment docker
-
 echo -e "\n✅ Docker proxy configuration applied."
 echo "👉 Try: docker pull hello-world"
