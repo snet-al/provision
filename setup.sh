@@ -251,6 +251,36 @@ configure_ssh_keys() {
 
 configure_ssh_keys
 
+# Ensure all scripts have execute permissions
+ensure_script_permissions() {
+    log "Ensuring all scripts have execute permissions..."
+    
+    local scripts=(
+        "create_user.sh"
+        "add_ssh_key.sh"
+        "security.sh"
+        "security_ratelimit.sh"
+        "docker.sh"
+        "after-setup.sh"
+    )
+    
+    for script in "${scripts[@]}"; do
+        local script_path="$SCRIPT_DIR/$script"
+        if [[ -f "$script_path" ]]; then
+            if [[ ! -x "$script_path" ]]; then
+                log "Making $script executable..."
+                chmod +x "$script_path"
+            fi
+        else
+            log_warning "Script not found: $script_path"
+        fi
+    done
+    
+    log "Script permissions check completed"
+}
+
+# Ensure all scripts have execute permissions before proceeding
+ensure_script_permissions
 
 # Security hardening
 apply_security_hardening() {
