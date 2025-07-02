@@ -83,7 +83,7 @@ check_prerequisites() {
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log "Docker installation cancelled by user"
-            exit 0
+            # exit 0 # continue in the case we are executing multiple time provision
         fi
     fi
 
