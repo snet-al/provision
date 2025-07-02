@@ -176,7 +176,7 @@ install_docker_packages() {
 
 # Configure Docker access
 configure_docker_access() {
-    log "Configuring Docker access for user: $USER"
+    log "Configuring Docker access for user: forge"
 
     # Create docker group (may already exist)
     if ! sudo groupadd docker 2>/dev/null; then
@@ -186,12 +186,12 @@ configure_docker_access() {
     fi
 
     # Add current user to docker group
-    if ! sudo usermod -aG docker "$USER"; then
-        log_error "Failed to add user $USER to docker group"
+    if ! sudo usermod -aG docker "forge"; then
+        log_error "Failed to add user forge to docker group"
         exit 1
     fi
 
-    log "User $USER added to docker group successfully"
+    log "User forge added to docker group successfully"
 }
 
 # Start and enable Docker service
@@ -272,7 +272,7 @@ main() {
     echo "✅ Docker installation completed successfully!"
     echo "🐳 Docker version: $(sudo docker --version)"
     echo "🔧 Docker Compose version: $(sudo docker compose version)"
-    echo "👤 User '$USER' has been added to the docker group"
+    echo "👤 User 'forge' has been added to the docker group"
     echo
     echo "📋 Next steps:"
     echo "   1. Log out and log back in for group changes to take effect"
