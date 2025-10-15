@@ -317,7 +317,7 @@ apply_rate_limiting() {
 # Docker installation
 install_docker() {
     log "Installing Docker..."
-    if ! sudo -u "$DEFAULT_USER" "$SCRIPT_DIR/docker.sh"; then
+    if ! sudo -u "$DEFAULT_USER" "./docker.sh"; then
         log_error "Docker installation failed"
         exit 1
     fi
@@ -327,7 +327,7 @@ install_docker() {
 # Post-setup cleanup
 run_post_setup() {
     log "Running post-setup cleanup..."
-    if ! "$SCRIPT_DIR/after-setup.sh"; then
+    if ! "./after-setup.sh"; then
         log_error "Post-setup cleanup failed"
         exit 1
     fi
