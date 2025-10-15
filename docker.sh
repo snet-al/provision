@@ -10,13 +10,23 @@ readonly LOG_FILE="/var/log/provision.log"
 readonly DOCKER_GPG_URL="https://download.docker.com/linux/ubuntu/gpg"
 readonly DOCKER_GPG_KEY="/etc/apt/keyrings/docker.asc"
 
+# Ensure log file is accessible
+ensure_log_file() {
+    if [[ ! -f "$LOG_FILE" ]]; then
+        touch "$LOG_FILE"
+        chmod 644 "$LOG_FILE"
+    fi
+}
+
 # Logging functions
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER: $1" | tee -a "$LOG_FILE"
+    ensure_log_file
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER: $1"
 }
 
 log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER ERROR: $1" | tee -a "$LOG_FILE" >&2
+    ensure_log_file
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER ERROR: $1" >&2
 }
 
 # Check prerequisites
