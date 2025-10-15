@@ -31,17 +31,23 @@ log "Starting post-setup file organization..."
 # Copy all provisioning scripts to forge user's home
 log "Copying provisioning scripts to forge user's home directory..."
 SCRIPTS_DIR="/home/forge/provision"
+CURRENT_DIR="$(pwd)"
 
-# Create directory with proper error handling
-if ! sudo -u forge mkdir -p "$SCRIPTS_DIR"; then
-    log_error "Failed to create scripts directory: $SCRIPTS_DIR"
-    exit 1
-fi
+# Check if we're already in the target directory
+if [[ "$CURRENT_DIR" == "$SCRIPTS_DIR" ]]; then
+    log "Scripts are already in the target directory. Skipping copy operation."
+else
+    # Create directory with proper error handling
+    if ! sudo -u forge mkdir -p "$SCRIPTS_DIR"; then
+        log_error "Failed to create scripts directory: $SCRIPTS_DIR"
+        exit 1
+    fi
 
-# Copy shell scripts
-if ! sudo cp ./*.sh "$SCRIPTS_DIR/"; then
-    log_error "Failed to copy shell scripts to $SCRIPTS_DIR"
-    exit 1
+    # Copy shell scripts
+    if ! sudo cp ./*.sh "$SCRIPTS_DIR/"; then
+        log_error "Failed to copy shell scripts to $SCRIPTS_DIR"
+        exit 1
+    fi
 fi
 
 # Copy README (optional, don't fail if missing)
