@@ -10,7 +10,17 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # Configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LOG_FILE="/var/log/provision.log"
-readonly DEFAULT_USER="forge"
+
+# Load configuration first (before setting readonly variables)
+if [[ -f "$SCRIPT_DIR/provision.local.conf" ]]; then
+    source "$SCRIPT_DIR/provision.local.conf"
+elif [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
+    source "$SCRIPT_DIR/provision.conf"
+fi
+
+# Set DEFAULT_USER from config or use default, then make it readonly
+DEFAULT_USER="${DEFAULT_USER:-forge}"
+readonly DEFAULT_USER
 
 # Logging functions
 log() {
