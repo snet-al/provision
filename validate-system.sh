@@ -241,6 +241,113 @@ validate_docker() {
     fi
 }
 
+# Validate Traefik installation
+validate_traefik() {
+    log_info "Validating Traefik installation..."
+    
+    # Load configuration
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$SCRIPT_DIR/provision.local.conf" ]]; then
+        source "$SCRIPT_DIR/provision.local.conf"
+    elif [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
+        source "$SCRIPT_DIR/provision.conf"
+    fi
+    
+    # Default values if not set in config
+    TRAEFIK_CONTAINER_NAME="${TRAEFIK_CONTAINER_NAME:-traefik}"
+    TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-datafynow-platform}"
+    TRAEFIK_CERTS_DIR="${TRAEFIK_CERTS_DIR:-/srv/traefik/certs}"
+    
+    # Check if Traefik container exists
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${TRAEFIK_CONTAINER_NAME}$"; then
+        log_success "Traefik container exists: $TRAEFIK_CONTAINER_NAME"
+        
+        # Check if Traefik container is running
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${TRAEFIK_CONTAINER_NAME}$"; then
+            log_success "Traefik container is running"
+            
+            # Check if Traefik is listening on ports
+            if netstat -tuln 2>/dev/null | grep -q ":80 " || ss -tuln 2>/dev/null | grep -q ":80 "; then
+                log_success "Traefik is listening on port 80"
+            else
+                log_warning "Traefik may not be listening on port 80"
+            fi
+            
+            if netstat -tuln 2>/dev/null | grep -q ":443 " || ss -tuln 2>/dev/null | grep -q ":443 "; then
+                log_success "Traefik is listening on port 443"
+            else
+                log_warning "Traefik may not be listening on port 443"
+            fi
+        else
+            log_error "Traefik container exists but is not running"
+        fi
+    else
+        log_info "Traefik container not found (may be intentional)"
+    fi
+    
+    # Check Docker network
+    if docker network inspect "$TRAEFIK_NETWORK" &>/dev/null 2>&1; then
+        log_success "Docker network exists: $TRAEFIK_NETWORK"
+        
+        # Check if Traefik container is connected to network
+        if docker network inspect "$TRAEFIK_NETWORK" 2>/dev/null | grep -q "$TRAEFIK_CONTAINER_NAME"; then
+            log_success "Traefik container is connected to network"
+        else
+            log_warning "Traefik container may not be connected to network"
+        fi
+    else
+        log_info "Docker network '$TRAEFIK_NETWORK' not found (may be intentional)"
+    fi
+    
+    # Check certificates directory
+    if [[ -d "$TRAEFIK_CERTS_DIR" ]]; then
+        log_success "Traefik certificates directory exists: $TRAEFIK_CERTS_DIR"
+    else
+        log_info "Traefik certificates directory not found: $TRAEFIK_CERTS_DIR (will be created on first use)"
+    fi
+}
+
+# Validate deployment directory
+validate_deployment_directory() {
+    log_info "Validating deployment directory..."
+    
+    # Load configuration
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$SCRIPT_DIR/provision.local.conf" ]]; then
+        source "$SCRIPT_DIR/provision.local.conf"
+    elif [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
+        source "$SCRIPT_DIR/provision.conf"
+    fi
+    
+    # Default values if not set in config
+    TRAEFIK_DEPLOYMENT_DIR="${TRAEFIK_DEPLOYMENT_DIR:-/srv/deployments}"
+    
+    # Check if deployment directory exists
+    if [[ -d "$TRAEFIK_DEPLOYMENT_DIR" ]]; then
+        log_success "Deployment directory exists: $TRAEFIK_DEPLOYMENT_DIR"
+        
+        # Check ownership
+        local dir_owner
+        dir_owner=$(stat -c "%U" "$TRAEFIK_DEPLOYMENT_DIR" 2>/dev/null || echo "unknown")
+        if [[ "$dir_owner" == "$DEFAULT_USER" ]]; then
+            log_success "Deployment directory ownership is correct: $dir_owner"
+        else
+            log_warning "Deployment directory ownership: $dir_owner (expected: $DEFAULT_USER)"
+        fi
+        
+        # Check permissions
+        local dir_perms
+        dir_perms=$(stat -c "%a" "$TRAEFIK_DEPLOYMENT_DIR" 2>/dev/null || echo "unknown")
+        if [[ "$dir_perms" == "750" ]]; then
+            log_success "Deployment directory permissions are correct: $dir_perms"
+        else
+            log_warning "Deployment directory permissions: $dir_perms (expected: 750)"
+        fi
+    else
+        log_info "Deployment directory not found: $TRAEFIK_DEPLOYMENT_DIR (may be intentional)"
+    fi
+}
+
 # Validate system services
 validate_services() {
     log_info "Validating system services..."
@@ -346,6 +453,8 @@ main() {
     validate_user
     validate_security
     validate_docker
+    validate_traefik
+    validate_deployment_directory
     validate_services
     validate_resources
     validate_logs
@@ -389,6 +498,8 @@ show_help() {
     echo "  • User configuration and SSH setup"
     echo "  • Security settings (firewall, fail2ban, SSH)"
     echo "  • Docker installation and configuration"
+    echo "  • Traefik reverse proxy installation and network"
+    echo "  • Deployment directory structure"
     echo "  • System services and resources"
     echo "  • Log files and system health"
     echo

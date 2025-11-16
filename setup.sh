@@ -261,6 +261,9 @@ ensure_script_permissions() {
         "security.sh"
         "security_ratelimit.sh"
         "docker.sh"
+        "deployment-setup.sh"
+        "traefik.sh"
+        "setup-traefik-platform.sh"
         "after-setup.sh"
     )
     
@@ -324,6 +327,45 @@ install_docker() {
     log "Docker installation completed successfully"
 }
 
+# Deployment platform setup (optional - for servers that will host applications)
+setup_deployment_platform() {
+    local setup_platform
+    echo
+    log "Deployment Platform Setup (Traefik + Docker Deployment)"
+    log "This setup is for servers that will host and deploy applications using Traefik."
+    log "Skip this if this server is not intended for application deployments."
+    read -p "Do you want to set up the deployment platform? (y/n): " setup_platform
+    if [[ "$setup_platform" = "y" ]]; then
+        log "Setting up deployment platform..."
+        
+        # Setup deployment directories
+        log "Setting up deployment directories..."
+        if ! "$SCRIPT_DIR/deployment-setup.sh"; then
+            log_error "Deployment directory setup failed"
+            exit 1
+        fi
+        log "Deployment directory setup completed successfully"
+        
+        # Install Traefik
+        local install_traefik
+        read -p "Do you want to install and configure Traefik reverse proxy? (y/n): " install_traefik
+        if [[ "$install_traefik" = "y" ]]; then
+            log "Installing Traefik..."
+            if ! "$SCRIPT_DIR/traefik.sh"; then
+                log_error "Traefik installation failed"
+                exit 1
+            fi
+            log "Traefik installation completed successfully"
+        else
+            log "Traefik installation skipped by user choice"
+        fi
+        
+        log "Deployment platform setup completed successfully"
+    else
+        log "Deployment platform setup skipped by user choice"
+    fi
+}
+
 # Post-setup cleanup
 run_post_setup() {
     log "Running post-setup cleanup..."
@@ -338,6 +380,7 @@ run_post_setup() {
 apply_security_hardening
 apply_rate_limiting
 install_docker
+setup_deployment_platform
 run_post_setup
 
 log "=== All installations and configurations complete ==="

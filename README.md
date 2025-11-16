@@ -18,6 +18,30 @@ sudo ./setup.sh
 ./validate-system.sh
 ```
 
+### Optional: Deployment Platform Setup
+
+For servers that will host and deploy applications using Traefik, you can set up the deployment platform:
+
+**Option 1: During main setup**
+- Run `sudo ./setup.sh` and answer "y" when prompted for deployment platform setup
+
+**Option 2: Standalone setup (recommended)**
+```bash
+# Set up Traefik and deployment infrastructure separately
+sudo ./setup-traefik-platform.sh
+```
+
+**Option 3: Individual components**
+```bash
+# Just create deployment directories
+sudo ./deployment-setup.sh
+
+# Just install Traefik (requires deployment directories)
+sudo ./traefik.sh
+```
+
+**Note:** The deployment platform setup is completely optional. Only use it on servers that will host and deploy applications. Skip it for database servers, monitoring servers, or other infrastructure that doesn't need application hosting.
+
 ## 📋 Prerequisites
 
 - **Ubuntu 24.04 LTS** server (fresh installation recommended)
@@ -38,6 +62,15 @@ sudo ./setup.sh
 | `security_ratelimit.sh` | Additional security measures | root/sudo |
 | `docker.sh` | Docker installation and configuration | root/sudo |
 | `after-setup.sh` | Post-setup cleanup and file organization | root/sudo |
+
+### Deployment Platform Scripts (Optional)
+| Script | Purpose | User Required |
+|--------|---------|---------------|
+| `setup-traefik-platform.sh` | Standalone script to set up Traefik and deployment infrastructure | root/sudo |
+| `deployment-setup.sh` | Creates deployment directory structure (/srv/deployments) | root/sudo |
+| `traefik.sh` | Installs and configures Traefik reverse proxy with Docker provider | root/sudo |
+
+**Note:** These scripts are optional and only needed for servers that will host and deploy applications. They can be run independently or as part of the main `setup.sh` script (with prompts).
 
 ### Validation & Testing Scripts
 | Script | Purpose | When to Use |
