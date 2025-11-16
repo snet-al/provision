@@ -17,9 +17,19 @@ ERRORS=0
 WARNINGS=0
 CHECKS=0
 
-# Configuration
-readonly DEFAULT_USER="forge"
-readonly LOG_FILE="/var/log/provision.log"
+# Load configuration first (before setting readonly variables)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/provision.local.conf" ]]; then
+    source "$SCRIPT_DIR/provision.local.conf"
+elif [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
+    source "$SCRIPT_DIR/provision.conf"
+fi
+
+# Set variables from config or use defaults, then make them readonly
+DEFAULT_USER="${DEFAULT_USER:-forge}"
+readonly DEFAULT_USER
+LOG_FILE="${LOG_FILE:-/var/log/provision.log}"
+readonly LOG_FILE
 
 # Logging functions
 log_info() {
