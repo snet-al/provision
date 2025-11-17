@@ -17,6 +17,10 @@ else
     DEPLOYMENTS_NETWORK="deployments-network"
 fi
 
+# Set default ports if not configured
+NGINX_PROXY_HTTP_PORT="${NGINX_PROXY_HTTP_PORT:-8080}"
+NGINX_PROXY_HTTPS_PORT="${NGINX_PROXY_HTTPS_PORT:-8443}"
+
 # Container configuration
 readonly CONTAINER_NAME="nginx-proxy"
 readonly NGINX_IMAGE="nginx:alpine"
@@ -67,10 +71,36 @@ check_prerequisites() {
     # Ensure sites-enabled directory exists
     if [[ ! -d "$HOST_SITES_ENABLED" ]]; then
         log "Creating sites-enabled directory: $HOST_SITES_ENABLED"
-        sudo mkdir -p "$HOST_SITES_ENABLED"
+        mkdir -p "$HOST_SITES_ENABLED"
     fi
 
+    # Check if ports are available
+    check_port_availability "$NGINX_PROXY_HTTP_PORT" "HTTP"
+    check_port_availability "$NGINX_PROXY_HTTPS_PORT" "HTTPS"
+
     log "Prerequisites check passed"
+}
+
+# Check if a port is available
+check_port_availability() {
+    local port=$1
+    local name=$2
+
+    if command -v ss &> /dev/null; then
+        if ss -tuln | grep -q ":${port} "; then
+            log_error "Port ${port} (${name}) is already in use"
+            log "Please change NGINX_PROXY_HTTP_PORT or NGINX_PROXY_HTTPS_PORT in docker-network.conf"
+            exit 1
+        fi
+    elif command -v netstat &> /dev/null; then
+        if netstat -tuln | grep -q ":${port} "; then
+            log_error "Port ${port} (${name}) is already in use"
+            log "Please change NGINX_PROXY_HTTP_PORT or NGINX_PROXY_HTTPS_PORT in docker-network.conf"
+            exit 1
+        fi
+    else
+        log "Warning: Cannot check port availability (ss/netstat not available)"
+    fi
 }
 
 # Check if container exists
@@ -122,12 +152,13 @@ create_container() {
     chmod 644 "$HOST_NGINX_CONF_PERMANENT"
 
     # Create container with volume mounts
+    log "Using ports: HTTP=${NGINX_PROXY_HTTP_PORT}, HTTPS=${NGINX_PROXY_HTTPS_PORT}"
     docker create \
         --name "$CONTAINER_NAME" \
         --network "$DEPLOYMENTS_NETWORK" \
         --restart unless-stopped \
-        -p 80:80 \
-        -p 443:443 \
+        -p "${NGINX_PROXY_HTTP_PORT}:80" \
+        -p "${NGINX_PROXY_HTTPS_PORT}:443" \
         -v "$HOST_SITES_ENABLED:/etc/nginx/sites-enabled:ro" \
         -v "$HOST_NGINX_CONF_PERMANENT:$CONTAINER_NGINX_CONF:ro" \
         "$NGINX_IMAGE" > /dev/null
@@ -177,7 +208,7 @@ verify_container() {
     
     log "Container is running"
     log "Container IP on ${DEPLOYMENTS_NETWORK}: ${container_ip}"
-    log "Container ports: 80:80, 443:443"
+    log "Container ports: ${NGINX_PROXY_HTTP_PORT}:80 (HTTP), ${NGINX_PROXY_HTTPS_PORT}:443 (HTTPS)"
 }
 
 # Reload Nginx configuration
@@ -214,9 +245,12 @@ main() {
             echo "✅ Nginx proxy container is running"
             echo "   Container name: $CONTAINER_NAME"
             echo "   Network: $DEPLOYMENTS_NETWORK"
-            echo "   Ports: 80:80, 443:443"
+            echo "   Ports: ${NGINX_PROXY_HTTP_PORT}:80 (HTTP), ${NGINX_PROXY_HTTPS_PORT}:443 (HTTPS)"
             echo "   To reload config: $0 reload"
             echo "   To view logs: docker logs $CONTAINER_NAME"
+            echo ""
+            echo "⚠️  Note: If host Nginx is running, configure it to proxy deployment subdomains"
+            echo "   to http://localhost:${NGINX_PROXY_HTTP_PORT} or https://localhost:${NGINX_PROXY_HTTPS_PORT}"
             ;;
         reload)
             reload_nginx
