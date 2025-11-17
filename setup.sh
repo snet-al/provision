@@ -152,6 +152,7 @@ if ! sudo apt install -y \
     curl \
     wget \
     unzip \
+    rsync \
     software-properties-common; then
     log_error "Failed to install basic system utilities"
     exit 1
