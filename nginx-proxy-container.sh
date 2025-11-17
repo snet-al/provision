@@ -23,6 +23,7 @@ readonly NGINX_IMAGE="nginx:alpine"
 readonly NGINX_CONF_DIR="/etc/nginx"
 readonly HOST_SITES_ENABLED="/etc/nginx/sites-enabled"
 readonly HOST_NGINX_CONF="$SCRIPT_DIR/nginx-proxy.conf"
+readonly HOST_NGINX_CONF_PERMANENT="/etc/nginx/nginx-proxy.conf"
 readonly CONTAINER_NGINX_CONF="$NGINX_CONF_DIR/nginx.conf"
 
 # Logging functions
@@ -114,10 +115,11 @@ pull_nginx_image() {
 create_container() {
     log "Creating Nginx proxy container: $CONTAINER_NAME"
 
-    # Create a temporary directory for nginx.conf
-    local temp_conf_dir
-    temp_conf_dir=$(mktemp -d)
-    cp "$HOST_NGINX_CONF" "$temp_conf_dir/nginx.conf"
+    # Copy nginx.conf to a permanent location
+    log "Copying Nginx configuration to permanent location"
+    mkdir -p "$(dirname "$HOST_NGINX_CONF_PERMANENT")"
+    cp "$HOST_NGINX_CONF" "$HOST_NGINX_CONF_PERMANENT"
+    chmod 644 "$HOST_NGINX_CONF_PERMANENT"
 
     # Create container with volume mounts
     docker create \
@@ -127,11 +129,8 @@ create_container() {
         -p 80:80 \
         -p 443:443 \
         -v "$HOST_SITES_ENABLED:/etc/nginx/sites-enabled:ro" \
-        -v "$temp_conf_dir/nginx.conf:$CONTAINER_NGINX_CONF:ro" \
+        -v "$HOST_NGINX_CONF_PERMANENT:$CONTAINER_NGINX_CONF:ro" \
         "$NGINX_IMAGE" > /dev/null
-
-    # Cleanup temp directory
-    rm -rf "$temp_conf_dir"
 
     log "Container created: $CONTAINER_NAME"
 }
