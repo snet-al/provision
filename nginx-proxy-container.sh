@@ -145,6 +145,22 @@ pull_nginx_image() {
 create_container() {
     log "Creating Nginx proxy container: $CONTAINER_NAME"
 
+    # Ensure sites-enabled directory exists
+    log "Ensuring sites-enabled directory exists"
+    mkdir -p "$HOST_SITES_ENABLED"
+    
+    # Create a minimal valid conf file if no conf files exist
+    # This ensures the include pattern always matches at least one file
+    local conf_files
+    conf_files=$(find "$HOST_SITES_ENABLED" -maxdepth 1 -name "*.conf" -type f 2>/dev/null | wc -l)
+    if [[ $conf_files -eq 0 ]]; then
+        cat > "$HOST_SITES_ENABLED/.placeholder.conf" << 'EOF'
+# Placeholder file - this file ensures nginx include pattern works
+# It will be ignored as it has no server blocks
+EOF
+        log "Created placeholder conf file in sites-enabled"
+    fi
+
     # Copy nginx.conf to a permanent location
     log "Copying Nginx configuration to permanent location"
     mkdir -p "$(dirname "$HOST_NGINX_CONF_PERMANENT")"
@@ -182,23 +198,48 @@ start_container() {
 verify_container() {
     log "Verifying container: $CONTAINER_NAME"
 
-    # Wait a moment for container to start
-    sleep 2
+    # Wait for container to start and stabilize
+    local max_attempts=10
+    local attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        sleep 1
+        if container_running; then
+            # Check if container is actually running (not restarting)
+            local status
+            status=$(docker inspect --format='{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "unknown")
+            if [[ "$status" == "running" ]]; then
+                break
+            fi
+        fi
+        ((attempt++))
+    done
 
     if ! container_running; then
-        log_error "Container $CONTAINER_NAME is not running"
+        log_error "Container $CONTAINER_NAME is not running after ${max_attempts} seconds"
+        log "Container status:"
+        docker ps -a --filter "name=$CONTAINER_NAME" 2>&1 || true
         log "Container logs:"
-        docker logs "$CONTAINER_NAME" 2>&1 | tail -20
+        docker logs "$CONTAINER_NAME" 2>&1 | tail -50 || true
         exit 1
     fi
 
+    # Wait a bit more for nginx to fully start
+    sleep 2
+
     # Test Nginx configuration
-    if docker exec "$CONTAINER_NAME" nginx -t > /dev/null 2>&1; then
+    log "Testing Nginx configuration..."
+    local test_output
+    test_output=$(docker exec "$CONTAINER_NAME" nginx -t 2>&1)
+    local test_exit=$?
+    
+    if [[ $test_exit -eq 0 ]]; then
         log "Nginx configuration is valid"
     else
         log_error "Nginx configuration test failed"
         log "Configuration test output:"
-        docker exec "$CONTAINER_NAME" nginx -t 2>&1 || true
+        echo "$test_output"
+        log "Container logs:"
+        docker logs "$CONTAINER_NAME" 2>&1 | tail -30
         exit 1
     fi
 
