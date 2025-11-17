@@ -28,6 +28,10 @@ TRAEFIK_DASHBOARD_ENABLED="${TRAEFIK_DASHBOARD_ENABLED:-false}"
 TRAEFIK_CONTAINER_NAME="${TRAEFIK_CONTAINER_NAME:-traefik}"
 TRAEFIK_CERTS_DIR="${TRAEFIK_CERTS_DIR:-/srv/traefik/certs}"
 TRAEFIK_CONFIG_DIR="${TRAEFIK_CONFIG_DIR:-/srv/traefik/config}"
+# Host ports for Traefik (nginx will proxy to these ports)
+# Set to empty string to disable host port mapping
+TRAEFIK_HOST_HTTP_PORT="${TRAEFIK_HOST_HTTP_PORT:-8080}"
+TRAEFIK_HOST_HTTPS_PORT="${TRAEFIK_HOST_HTTPS_PORT:-8443}"
 
 # Logging functions
 log() {
@@ -166,12 +170,27 @@ install_traefik() {
         "--name" "$TRAEFIK_CONTAINER_NAME"
         "--restart" "always"
         "--network" "$TRAEFIK_NETWORK"
-        "--publish" "80:80"
-        "--publish" "443:443"
         "--volume" "/var/run/docker.sock:/var/run/docker.sock:ro"
         "--volume" "$TRAEFIK_CERTS_DIR:/data/certs"
         "--label" "traefik.enable=true"
     )
+
+    # Add port mappings only if host ports are configured
+    # If nginx is on the host, Traefik should use different ports (e.g., 8080, 8443)
+    # Nginx will then proxy to these ports
+    if [[ -n "${TRAEFIK_HOST_HTTP_PORT:-}" ]]; then
+        log "Mapping Traefik HTTP to host port: $TRAEFIK_HOST_HTTP_PORT"
+        docker_args+=("--publish" "${TRAEFIK_HOST_HTTP_PORT}:80")
+    else
+        log "Traefik HTTP will only be accessible within Docker network (no host port mapping)"
+    fi
+
+    if [[ -n "${TRAEFIK_HOST_HTTPS_PORT:-}" ]]; then
+        log "Mapping Traefik HTTPS to host port: $TRAEFIK_HOST_HTTPS_PORT"
+        docker_args+=("--publish" "${TRAEFIK_HOST_HTTPS_PORT}:443")
+    else
+        log "Traefik HTTPS will only be accessible within Docker network (no host port mapping)"
+    fi
 
     # Add dashboard labels if enabled
     if [[ "$TRAEFIK_DASHBOARD_ENABLED" == "true" ]]; then
@@ -225,17 +244,25 @@ verify_installation() {
 
     log "Traefik container is running"
 
-    # Check if Traefik is listening on ports
-    if ! netstat -tuln 2>/dev/null | grep -q ":80 " && ! ss -tuln 2>/dev/null | grep -q ":80 "; then
-        log_warning "Traefik may not be listening on port 80"
+    # Check if Traefik is listening on configured host ports
+    if [[ -n "${TRAEFIK_HOST_HTTP_PORT:-}" ]]; then
+        if netstat -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTP_PORT} " || ss -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTP_PORT} "; then
+            log "Traefik is listening on host port ${TRAEFIK_HOST_HTTP_PORT} (HTTP)"
+        else
+            log_warning "Traefik may not be listening on host port ${TRAEFIK_HOST_HTTP_PORT}"
+        fi
     else
-        log "Traefik is listening on port 80"
+        log "Traefik HTTP is only accessible within Docker network (no host port mapping)"
     fi
 
-    if ! netstat -tuln 2>/dev/null | grep -q ":443 " && ! ss -tuln 2>/dev/null | grep -q ":443 "; then
-        log_warning "Traefik may not be listening on port 443"
+    if [[ -n "${TRAEFIK_HOST_HTTPS_PORT:-}" ]]; then
+        if netstat -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTPS_PORT} " || ss -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTPS_PORT} "; then
+            log "Traefik is listening on host port ${TRAEFIK_HOST_HTTPS_PORT} (HTTPS)"
+        else
+            log_warning "Traefik may not be listening on host port ${TRAEFIK_HOST_HTTPS_PORT}"
+        fi
     else
-        log "Traefik is listening on port 443"
+        log "Traefik HTTPS is only accessible within Docker network (no host port mapping)"
     fi
 
     # Check Docker network
@@ -269,14 +296,34 @@ main() {
     echo "📧 Let's Encrypt email: $TRAEFIK_EMAIL"
     echo "🔒 Domain: $TRAEFIK_DOMAIN"
     echo "📁 Certificates: $TRAEFIK_CERTS_DIR"
+    if [[ -n "${TRAEFIK_HOST_HTTP_PORT:-}" ]]; then
+        echo "🌐 HTTP host port: ${TRAEFIK_HOST_HTTP_PORT}"
+    fi
+    if [[ -n "${TRAEFIK_HOST_HTTPS_PORT:-}" ]]; then
+        echo "🔒 HTTPS host port: ${TRAEFIK_HOST_HTTPS_PORT}"
+    fi
     echo
     echo "📋 Next steps:"
     echo "   1. Ensure DNS points *.${TRAEFIK_DOMAIN} to this server"
-    echo "   2. Deploy containers with Traefik labels to enable automatic routing"
-    echo "   3. Check Traefik logs: docker logs $TRAEFIK_CONTAINER_NAME"
-    echo "   4. Verify network: docker network inspect $TRAEFIK_NETWORK"
+    if [[ -n "${TRAEFIK_HOST_HTTP_PORT:-}" ]] || [[ -n "${TRAEFIK_HOST_HTTPS_PORT:-}" ]]; then
+        echo "   2. Configure nginx to proxy to Traefik:"
+        if [[ -n "${TRAEFIK_HOST_HTTP_PORT:-}" ]]; then
+            echo "      - HTTP: proxy_pass http://127.0.0.1:${TRAEFIK_HOST_HTTP_PORT};"
+        fi
+        if [[ -n "${TRAEFIK_HOST_HTTPS_PORT:-}" ]]; then
+            echo "      - HTTPS: proxy_pass https://127.0.0.1:${TRAEFIK_HOST_HTTPS_PORT};"
+        fi
+        echo "   3. Deploy containers with Traefik labels to enable automatic routing"
+        echo "   4. Check Traefik logs: docker logs $TRAEFIK_CONTAINER_NAME"
+        echo "   5. Verify network: docker network inspect $TRAEFIK_NETWORK"
+    else
+        echo "   2. Traefik is only accessible within Docker network"
+        echo "   3. Deploy containers with Traefik labels to enable automatic routing"
+        echo "   4. Check Traefik logs: docker logs $TRAEFIK_CONTAINER_NAME"
+        echo "   5. Verify network: docker network inspect $TRAEFIK_NETWORK"
+    fi
     if [[ "$TRAEFIK_DASHBOARD_ENABLED" == "true" ]]; then
-        echo "   5. Access dashboard: https://traefik.${TRAEFIK_DOMAIN}"
+        echo "   6. Access dashboard: https://traefik.${TRAEFIK_DOMAIN}"
     fi
     echo
 }

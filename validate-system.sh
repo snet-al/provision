@@ -267,6 +267,8 @@ validate_traefik() {
     TRAEFIK_CONTAINER_NAME="${TRAEFIK_CONTAINER_NAME:-traefik}"
     TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-datafynow-platform}"
     TRAEFIK_CERTS_DIR="${TRAEFIK_CERTS_DIR:-/srv/traefik/certs}"
+    TRAEFIK_HOST_HTTP_PORT="${TRAEFIK_HOST_HTTP_PORT:-8080}"
+    TRAEFIK_HOST_HTTPS_PORT="${TRAEFIK_HOST_HTTPS_PORT:-8443}"
     
     # Check if Traefik container exists
     if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${TRAEFIK_CONTAINER_NAME}$"; then
@@ -276,17 +278,25 @@ validate_traefik() {
         if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${TRAEFIK_CONTAINER_NAME}$"; then
             log_success "Traefik container is running"
             
-            # Check if Traefik is listening on ports
-            if netstat -tuln 2>/dev/null | grep -q ":80 " || ss -tuln 2>/dev/null | grep -q ":80 "; then
-                log_success "Traefik is listening on port 80"
+            # Check if Traefik is listening on configured host ports
+            if [[ -n "${TRAEFIK_HOST_HTTP_PORT:-}" ]]; then
+                if netstat -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTP_PORT} " || ss -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTP_PORT} "; then
+                    log_success "Traefik is listening on host port ${TRAEFIK_HOST_HTTP_PORT} (HTTP)"
+                else
+                    log_warning "Traefik may not be listening on host port ${TRAEFIK_HOST_HTTP_PORT}"
+                fi
             else
-                log_warning "Traefik may not be listening on port 80"
+                log_info "Traefik HTTP is only accessible within Docker network (no host port mapping)"
             fi
             
-            if netstat -tuln 2>/dev/null | grep -q ":443 " || ss -tuln 2>/dev/null | grep -q ":443 "; then
-                log_success "Traefik is listening on port 443"
+            if [[ -n "${TRAEFIK_HOST_HTTPS_PORT:-}" ]]; then
+                if netstat -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTPS_PORT} " || ss -tuln 2>/dev/null | grep -q ":${TRAEFIK_HOST_HTTPS_PORT} "; then
+                    log_success "Traefik is listening on host port ${TRAEFIK_HOST_HTTPS_PORT} (HTTPS)"
+                else
+                    log_warning "Traefik may not be listening on host port ${TRAEFIK_HOST_HTTPS_PORT}"
+                fi
             else
-                log_warning "Traefik may not be listening on port 443"
+                log_info "Traefik HTTPS is only accessible within Docker network (no host port mapping)"
             fi
         else
             log_error "Traefik container exists but is not running"
