@@ -7,29 +7,31 @@ set -euo pipefail
 
 # Configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly LOG_FILE="/var/log/deployment.log"
+readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly DEPLOYMENTS_DIR="/home/forge/deployments"
 readonly DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
 readonly WATCH_INTERVAL=5  # seconds to wait before processing new directory
 
 # Ensure log file is accessible
 ensure_log_file() {
+    local log_dir=$(dirname "$LOG_FILE")
+    mkdir -p "$log_dir"
     if [[ ! -f "$LOG_FILE" ]]; then
-        sudo touch "$LOG_FILE"
-        sudo chmod 644 "$LOG_FILE"
+        touch "$LOG_FILE"
+        chmod 644 "$LOG_FILE"
     fi
 }
 
 # Logging functions
 log() {
     ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCH: $1" | sudo tee -a "$LOG_FILE" > /dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCH: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "WATCH: $1"
 }
 
 log_error() {
     ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCH ERROR: $1" | sudo tee -a "$LOG_FILE" > /dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCH ERROR: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "WATCH ERROR: $1" >&2
 }
 

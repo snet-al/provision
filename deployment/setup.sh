@@ -7,7 +7,7 @@ set -euo pipefail
 
 # Configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly LOG_FILE="/var/log/deployment.log"
+readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly NETWORK_NAME="deployment-network"
 readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
@@ -16,22 +16,30 @@ readonly DOMAIN_SUFFIX="datafynow.ai"
 
 # Ensure log file is accessible
 ensure_log_file() {
+    local log_dir=$(dirname "$LOG_FILE")
+    # Create log directory as current user (forge if running without sudo, or root if with sudo)
+    mkdir -p "$log_dir"
     if [[ ! -f "$LOG_FILE" ]]; then
-        sudo touch "$LOG_FILE"
-        sudo chmod 644 "$LOG_FILE"
+        touch "$LOG_FILE"
+        chmod 644 "$LOG_FILE"
+        # If running with sudo, change ownership to forge
+        if [[ $EUID -eq 0 ]]; then
+            chown forge:forge "$LOG_FILE" 2>/dev/null || true
+            chown forge:forge "$log_dir" 2>/dev/null || true
+        fi
     fi
 }
 
 # Logging functions
 log() {
     ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SETUP: $1" | sudo tee -a "$LOG_FILE" > /dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SETUP: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "SETUP: $1"
 }
 
 log_error() {
     ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SETUP ERROR: $1" | sudo tee -a "$LOG_FILE" > /dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SETUP ERROR: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "SETUP ERROR: $1" >&2
 }
 
@@ -81,9 +89,12 @@ create_network() {
 create_nginx_dirs() {
     log "Creating nginx configuration directories..."
 
-    sudo mkdir -p "$NGINX_CONFIG_DIR/sites-available"
-    sudo mkdir -p "$NGINX_CONFIG_DIR/sites-enabled"
-    sudo chown -R forge:forge "$NGINX_CONFIG_DIR" || true
+    mkdir -p "$NGINX_CONFIG_DIR/sites-available"
+    mkdir -p "$NGINX_CONFIG_DIR/sites-enabled"
+    # If running with sudo, ensure ownership is set to forge
+    if [[ $EUID -eq 0 ]]; then
+        chown -R forge:forge "$NGINX_CONFIG_DIR" || true
+    fi
 
     log "Nginx configuration directories created"
 }
@@ -94,7 +105,7 @@ create_nginx_main_config() {
 
     local nginx_conf="$NGINX_CONFIG_DIR/nginx.conf"
     
-    sudo tee "$nginx_conf" > /dev/null <<'EOF'
+    tee "$nginx_conf" > /dev/null <<'EOF'
 user nginx;
 worker_processes auto;
 error_log /var/log/nginx/error.log warn;
@@ -131,7 +142,10 @@ http {
 }
 EOF
 
-    sudo chown forge:forge "$nginx_conf" || true
+    # If running with sudo, ensure ownership is set to forge
+    if [[ $EUID -eq 0 ]]; then
+        chown forge:forge "$nginx_conf" || true
+    fi
     log "Nginx main configuration created"
 }
 
@@ -182,8 +196,11 @@ create_deployments_dir() {
     log "Ensuring deployments directory exists..."
 
     if [[ ! -d "$DEPLOYMENTS_DIR" ]]; then
-        sudo mkdir -p "$DEPLOYMENTS_DIR"
-        sudo chown forge:forge "$DEPLOYMENTS_DIR"
+        mkdir -p "$DEPLOYMENTS_DIR"
+        # If running with sudo, ensure ownership is set to forge
+        if [[ $EUID -eq 0 ]]; then
+            chown forge:forge "$DEPLOYMENTS_DIR"
+        fi
         log "Created deployments directory: $DEPLOYMENTS_DIR"
     else
         log "Deployments directory already exists: $DEPLOYMENTS_DIR"

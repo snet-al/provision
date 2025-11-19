@@ -7,7 +7,7 @@ set -euo pipefail
 
 # Configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly LOG_FILE="/var/log/deployment.log"
+readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly NETWORK_NAME="deployment-network"
 readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
@@ -16,22 +16,24 @@ readonly DEFAULT_PORT="8080"
 
 # Ensure log file is accessible
 ensure_log_file() {
+    local log_dir=$(dirname "$LOG_FILE")
+    mkdir -p "$log_dir"
     if [[ ! -f "$LOG_FILE" ]]; then
-        sudo touch "$LOG_FILE"
-        sudo chmod 644 "$LOG_FILE"
+        touch "$LOG_FILE"
+        chmod 644 "$LOG_FILE"
     fi
 }
 
 # Logging functions
 log() {
     ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEPLOY: $1" | sudo tee -a "$LOG_FILE" > /dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEPLOY: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "DEPLOY: $1"
 }
 
 log_error() {
     ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEPLOY ERROR: $1" | sudo tee -a "$LOG_FILE" > /dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEPLOY ERROR: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "DEPLOY ERROR: $1" >&2
 }
 
@@ -179,18 +181,17 @@ generate_nginx_config() {
     fi
     
     # Create output directory if it doesn't exist
-    sudo mkdir -p "$output_dir"
+    mkdir -p "$output_dir"
     
     # Process template with sed
-    sudo sed \
+    sed \
         -e "s#__SUBDOMAIN__#${subdomain}#g" \
         -e "s#__CONTAINER_NAME__#${container_name}#g" \
         -e "s#__INTERNAL_PORT__#${internal_port}#g" \
         -e "s#__USER_ID__#${user_id}#g" \
         -e "s#__DATASET_ID__#${dataset_id}#g" \
-        "$template_file" | sudo tee "$output_file" > /dev/null
+        "$template_file" | tee "$output_file" > /dev/null
     
-    sudo chown forge:forge "$output_file" || true
     log "Generated: $output_file"
 }
 
@@ -224,7 +225,7 @@ rollback() {
     docker rm "$container_name" 2>/dev/null || true
     
     # Remove nginx config
-    sudo rm -f "$config_file" 2>/dev/null || true
+    rm -f "$config_file" 2>/dev/null || true
     
     # Try to reload nginx
     docker exec "$NGINX_CONTAINER_NAME" nginx -s reload 2>/dev/null || true

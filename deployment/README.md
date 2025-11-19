@@ -128,11 +128,11 @@ The nginx configuration automatically routes traffic to the corresponding Docker
 
 ## Logging
 
-All deployment activities are logged to `/var/log/deployment.log`:
+All deployment activities are logged to `/home/forge/deployment/logs/deployment.log`:
 
 ```bash
 # View logs
-tail -f /var/log/deployment.log
+tail -f /home/forge/deployment/logs/deployment.log
 
 # View nginx logs
 docker logs deployment-nginx
@@ -244,7 +244,7 @@ docker network prune
 ## Support
 
 For issues or questions, check:
-1. Deployment logs: `/var/log/deployment.log`
+1. Deployment logs: `/home/forge/deployment/logs/deployment.log`
 2. Nginx logs: `docker logs deployment-nginx`
 3. Container logs: `docker logs <container-name>`
 
