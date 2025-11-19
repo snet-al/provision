@@ -56,9 +56,9 @@ extract_ids() {
     local dir_name
     dir_name=$(basename "$repo_path")
     
-    # Expected format: userid-datasetid
-    if [[ ! "$dir_name" =~ ^([a-zA-Z0-9_-]+)-([a-zA-Z0-9_-]+)$ ]]; then
-        log_error "Invalid directory name format. Expected: userid-datasetid, got: $dir_name"
+    # Expected format: d_{userId}_dataset{datasetId}
+    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)$ ]]; then
+        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}, got: $dir_name"
         exit 1
     fi
 
@@ -167,9 +167,9 @@ generate_nginx_config() {
     local internal_port="$5"
     
     # Build names dynamically
-    local subdomain="u${user_id}-d${dataset_id}.${DOMAIN_SUFFIX}"
-    local container_name="app_u${user_id}_d${dataset_id}"
-    local output_file="${output_dir}/site_u${user_id}_d${dataset_id}.conf"
+    local subdomain="d_${user_id}_dataset${dataset_id}.${DOMAIN_SUFFIX}"
+    local container_name="app_d${user_id}_dataset${dataset_id}"
+    local output_file="${output_dir}/site_d${user_id}_dataset${dataset_id}.conf"
     
     log "Generating nginx config: $output_file"
     
@@ -252,13 +252,13 @@ main() {
     check_dockerfile "$repo_path"
     
     # Set variables with new naming convention
-    local container_name="app_u${USERID}_d${DATASETID}"
+    local container_name="app_d${USERID}_dataset${DATASETID}"
     local image_name="${container_name}:latest"
-    local subdomain="u${USERID}-d${DATASETID}.${DOMAIN_SUFFIX}"
+    local subdomain="d_${USERID}_dataset${DATASETID}.${DOMAIN_SUFFIX}"
     local dockerfile_path="$repo_path/Dockerfile.pf"
     local port
     port=$(extract_port_from_dockerfile "$dockerfile_path")
-    local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_u${USERID}_d${DATASETID}.conf"
+    local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
     
     # Check if already deployed
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
