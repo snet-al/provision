@@ -77,7 +77,7 @@ process_existing_dirs() {
         if [[ -d "$dir" ]] && [[ -f "$dir/Dockerfile.pf" ]]; then
             log "Found existing repository: $(basename "$dir")"
             if "$DEPLOY_SCRIPT" "$dir"; then
-                ((count++))
+                ((count+=1))
                 log "Deployed existing repository: $(basename "$dir")"
             else
                 log_error "Failed to deploy existing repository: $(basename "$dir")"
