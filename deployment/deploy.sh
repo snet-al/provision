@@ -144,7 +144,7 @@ cleanup_image() {
 wait_for_container_dns() {
     local container_name="$1"
     local retries=5
-    local delay=1
+    local delay=5
     local attempt=1
 
     while (( attempt <= retries )); do
