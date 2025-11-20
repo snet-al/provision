@@ -11,6 +11,7 @@ readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly DEPLOYMENTS_DIR="/home/forge/deployments"
 readonly DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
 readonly WATCH_INTERVAL=5  # seconds to wait before processing new directory
+declare -a WATCHER_PIDS=()
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -91,10 +92,11 @@ process_existing_dirs() {
 # Deploy a repository
 deploy_repository() {
     local repo_path="$1"
+    local trigger_reason="${2:-"New repository detected"}"
     local dir_name
     dir_name=$(basename "$repo_path")
     
-    log "New repository detected: $dir_name"
+    log "$trigger_reason: $dir_name"
     
     # Wait a bit for directory to be fully created
     sleep "$WATCH_INTERVAL"
@@ -143,9 +145,51 @@ watch_for_new_dirs() {
     done
 }
 
+watch_for_file_content_changes() {
+    log "Watching for file changes in $DEPLOYMENTS_DIR..."
+
+    inotifywait -m -r "$DEPLOYMENTS_DIR" \
+        -e modify -e close_write -e moved_to -e moved_from -e create -e delete \
+        --format '%w%f' \
+        -q 2>/dev/null | while read -r changed_path; do
+
+        if [[ "$changed_path" == "$DEPLOYMENTS_DIR" ]] || [[ "$changed_path" == "$DEPLOYMENTS_DIR/" ]]; then
+            continue
+        fi
+
+        local relative_path="${changed_path#$DEPLOYMENTS_DIR/}"
+        if [[ "$relative_path" == "$changed_path" ]] || [[ -z "$relative_path" ]]; then
+            continue
+        fi
+
+        local repo_name="${relative_path%%/*}"
+        if [[ -z "$repo_name" ]]; then
+            continue
+        fi
+
+        local repo_path="$DEPLOYMENTS_DIR/$repo_name"
+        if [[ ! -d "$repo_path" ]]; then
+            continue
+        fi
+
+        if [[ -f "$repo_path/Dockerfile.pf" ]]; then
+            (deploy_repository "$repo_path" "File change detected" || true) &
+        else
+            log_error "File change detected in $repo_name but Dockerfile.pf is missing"
+        fi
+    done
+}
+
+watch_for_new_Dockerfile_pf() {
+    
+}
+
 # Signal handler for graceful shutdown
 cleanup() {
     log "Received shutdown signal. Stopping watcher..."
+    if [[ ${#WATCHER_PIDS[@]} -gt 0 ]]; then
+        kill "${WATCHER_PIDS[@]}" 2>/dev/null || true
+    fi
     exit 0
 }
 
@@ -160,8 +204,14 @@ main() {
     # Process existing directories first
     process_existing_dirs
     
-    # Start watching for new directories
-    watch_for_new_dirs
+    # Start watchers
+    watch_for_new_dirs &
+    WATCHER_PIDS+=($!)
+
+    watch_for_file_content_changes &
+    WATCHER_PIDS+=($!)
+
+    wait "${WATCHER_PIDS[@]}"
 }
 
 # Check if running as daemon
