@@ -58,9 +58,9 @@ extract_ids() {
     local dir_name
     dir_name=$(basename "$repo_path")
     
-    # Expected format: d_{userId}_dataset{datasetId}
-    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)$ ]]; then
-        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}, got: $dir_name"
+    # Expected format: d_{userId}_dataset{datasetId}[.domain]
+    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9._-]+)?$ ]]; then
+        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}[.domain], got: $dir_name"
         exit 1
     fi
 
