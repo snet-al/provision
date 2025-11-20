@@ -1,3 +1,15 @@
+# Acquire per-repository lock to prevent parallel deployments
+acquire_deploy_lock() {
+    local container_name="$1"
+    local lock_file="/tmp/deploy-${container_name}.lock"
+
+    exec {DEPLOY_LOCK_FD}>"$lock_file"
+    if ! flock -n "$DEPLOY_LOCK_FD"; then
+        log "Deployment already in progress for $container_name. Skipping."
+        exit 0
+    fi
+}
+
 #!/bin/bash
 
 # Deployment script for a single repository
@@ -128,6 +140,18 @@ cleanup_existing_container() {
     fi
 }
 
+# Remove existing image if present
+cleanup_image() {
+    local image_name="$1"
+    
+    if docker images --format '{{.Repository}}:{{.Tag}}' | grep -Fx "$image_name" >/dev/null 2>&1; then
+        log "Removing Docker image: $image_name"
+        docker image rm "$image_name" >/dev/null 2>&1 || true
+    else
+        log "No Docker image found to remove: $image_name"
+    fi
+}
+
 # Run Docker container
 run_container() {
     local container_name="$1"
@@ -218,6 +242,7 @@ reload_nginx() {
 rollback() {
     local container_name="$1"
     local config_file="$2"
+    local image_name="$3"
     
     log_error "Rolling back deployment..."
     
@@ -230,6 +255,9 @@ rollback() {
     
     # Try to reload nginx
     docker exec "$NGINX_CONTAINER_NAME" nginx -s reload 2>/dev/null || true
+    
+    # Remove built image to avoid stale artifacts
+    cleanup_image "$image_name"
     
     log_error "Rollback completed"
 }
@@ -262,6 +290,8 @@ main() {
     port=$(extract_port_from_dockerfile "$dockerfile_path")
     local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
     
+    acquire_deploy_lock "$container_name"
+    
     # Check if already deployed
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
         log "Container $container_name is already running. Skipping deployment."
@@ -277,7 +307,7 @@ main() {
         generate_nginx_config "$template_file" "$NGINX_CONFIG_DIR/sites-enabled" "$USERID" "$DATASETID" "$port"
         reload_nginx
     ); then
-        rollback "$container_name" "$config_file"
+        rollback "$container_name" "$config_file" "$image_name"
         exit 1
     fi
     

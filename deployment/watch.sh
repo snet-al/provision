@@ -11,6 +11,9 @@ readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly DEPLOYMENTS_DIR="/home/forge/deployments"
 readonly DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
 readonly WATCH_INTERVAL=5  # seconds to wait before processing new directory
+readonly NGINX_CONTAINER_NAME="deployment-nginx"
+readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
+declare -a WATCHER_PIDS=()
 declare -a WATCHER_PIDS=()
 
 # Ensure log file is accessible
@@ -180,6 +183,59 @@ watch_for_file_content_changes() {
     done
 }
 
+cleanup_removed_repository() {
+    local dir_name="$1"
+
+    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9._-]+)?$ ]]; then
+        log "Skipping cleanup for unrecognized directory: $dir_name"
+        return
+    fi
+
+    local user_id="${BASH_REMATCH[1]}"
+    local dataset_id="${BASH_REMATCH[2]}"
+    local container_name="app_d${user_id}_dataset${dataset_id}"
+    local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${user_id}_dataset${dataset_id}.conf"
+
+    if docker ps -a --format '{{.Names}}' | grep -Fx "$container_name" >/dev/null 2>&1; then
+        log "Stopping container for removed repository: $dir_name"
+        docker stop "$container_name" >/dev/null 2>&1 || true
+        docker rm "$container_name" >/dev/null 2>&1 || true
+        log "Removed container: $container_name"
+    else
+        log "No container to remove for: $dir_name"
+    fi
+
+    if [[ -f "$config_file" ]]; then
+        log "Removing nginx config for removed repository: $dir_name"
+        rm -f "$config_file"
+        if docker exec "$NGINX_CONTAINER_NAME" nginx -s reload >/dev/null 2>&1; then
+            log "Reloaded nginx after removing config for: $dir_name"
+        else
+            log_error "Failed to reload nginx after removing config for: $dir_name"
+        fi
+    else
+        log "No nginx config found for: $dir_name"
+    fi
+}
+
+watch_for_removed_dirs() {
+    log "Watching for repository deletions in $DEPLOYMENTS_DIR..."
+
+    inotifywait -m "$DEPLOYMENTS_DIR" \
+        -e delete -e moved_from \
+        --format '%e %f' \
+        -q 2>/dev/null | while read -r event name; do
+
+        if [[ -z "$name" ]]; then
+            continue
+        fi
+
+        if [[ "$event" == *"ISDIR"* ]]; then
+            cleanup_removed_repository "$name"
+        fi
+    done
+}
+
 # Signal handler for graceful shutdown
 cleanup() {
     log "Received shutdown signal. Stopping watcher..."
@@ -205,6 +261,9 @@ main() {
     WATCHER_PIDS+=($!)
 
     watch_for_file_content_changes &
+    WATCHER_PIDS+=($!)
+
+    watch_for_removed_dirs &
     WATCHER_PIDS+=($!)
 
     wait "${WATCHER_PIDS[@]}"
