@@ -180,10 +180,6 @@ watch_for_file_content_changes() {
     done
 }
 
-watch_for_new_Dockerfile_pf() {
-    
-}
-
 # Signal handler for graceful shutdown
 cleanup() {
     log "Received shutdown signal. Stopping watcher..."
