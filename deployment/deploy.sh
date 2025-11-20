@@ -107,6 +107,9 @@ build_image() {
     local image_name="$2"
     
     log "Building Docker image: $image_name"
+
+    # Ensure no stale tag remains from previous builds
+    cleanup_image "$image_name"
     
     if docker build --no-cache -t "$image_name" -f "$repo_path/Dockerfile.pf" "$repo_path"; then
         log "Docker image built successfully: $image_name"
