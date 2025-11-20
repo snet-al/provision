@@ -1,15 +1,3 @@
-# Acquire per-repository lock to prevent parallel deployments
-acquire_deploy_lock() {
-    local container_name="$1"
-    local lock_file="/tmp/deploy-${container_name}.lock"
-
-    exec {DEPLOY_LOCK_FD}>"$lock_file"
-    if ! flock -n "$DEPLOY_LOCK_FD"; then
-        log "Deployment already in progress for $container_name. Skipping."
-        exit 0
-    fi
-}
-
 #!/bin/bash
 
 # Deployment script for a single repository
@@ -25,6 +13,18 @@ readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
 readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
+
+# Acquire per-repository lock to prevent parallel deployments
+acquire_deploy_lock() {
+    local container_name="$1"
+    local lock_file="/tmp/deploy-${container_name}.lock"
+
+    exec {DEPLOY_LOCK_FD}>"$lock_file"
+    if ! flock -n "$DEPLOY_LOCK_FD"; then
+        log "Deployment already in progress for $container_name. Skipping."
+        exit 0
+    fi
+}
 
 # Ensure log file is accessible
 ensure_log_file() {
