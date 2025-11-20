@@ -316,7 +316,7 @@ main() {
         generate_nginx_config "$template_file" "$NGINX_CONFIG_DIR/sites-enabled" "$USERID" "$DATASETID" "$port"
         reload_nginx
     ); then
-        rollback "$container_name" "$config_file" "$image_name"
+        # rollback "$container_name" "$config_file" "$image_name"
         exit 1
     fi
     
