@@ -152,6 +152,28 @@ cleanup_image() {
     fi
 }
 
+# Wait until nginx container can resolve the app container hostname
+wait_for_container_dns() {
+    local container_name="$1"
+    local retries=5
+    local delay=1
+    local attempt=1
+
+    while (( attempt <= retries )); do
+        if docker exec "$NGINX_CONTAINER_NAME" getent hosts "$container_name" >/dev/null 2>&1; then
+            log "DNS ready inside nginx for container: $container_name"
+            return 0
+        fi
+
+        log "Waiting for container DNS registration ($attempt/$retries): $container_name"
+        sleep "$delay"
+        ((attempt++))
+    done
+
+    log_error "Container $container_name is not resolvable inside nginx after ${retries} attempts"
+    return 1
+}
+
 # Run Docker container
 run_container() {
     local container_name="$1"
@@ -304,6 +326,7 @@ main() {
         cleanup_existing_container "$container_name"
         build_image "$repo_path" "$image_name"
         run_container "$container_name" "$image_name" "$port"
+        wait_for_container_dns "$container_name"
         generate_nginx_config "$template_file" "$NGINX_CONFIG_DIR/sites-enabled" "$USERID" "$DATASETID" "$port"
         reload_nginx
     ); then
