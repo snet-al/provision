@@ -108,7 +108,7 @@ build_image() {
     
     log "Building Docker image: $image_name"
     
-    if docker build -t "$image_name" -f "$repo_path/Dockerfile.pf" "$repo_path"; then
+    if docker build --no-cache -t "$image_name" -f "$repo_path/Dockerfile.pf" "$repo_path"; then
         log "Docker image built successfully: $image_name"
     else
         log_error "Failed to build Docker image: $image_name"
