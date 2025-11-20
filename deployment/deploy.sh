@@ -14,18 +14,6 @@ readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
 readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
 
-# Acquire per-repository lock to prevent parallel deployments
-acquire_deploy_lock() {
-    local container_name="$1"
-    local lock_file="/tmp/deploy-${container_name}.lock"
-
-    exec {DEPLOY_LOCK_FD}>"$lock_file"
-    if ! flock -n "$DEPLOY_LOCK_FD"; then
-        log "Deployment already in progress for $container_name. Skipping."
-        exit 0
-    fi
-}
-
 # Ensure log file is accessible
 ensure_log_file() {
     local log_dir=$(dirname "$LOG_FILE")
@@ -311,8 +299,6 @@ main() {
     local port
     port=$(extract_port_from_dockerfile "$dockerfile_path")
     local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
-    
-    acquire_deploy_lock "$container_name"
     
     # Check if already deployed
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
