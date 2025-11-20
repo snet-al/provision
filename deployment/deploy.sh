@@ -137,6 +137,7 @@ run_container() {
     log "Running container: $container_name on port $port"
     
     if docker run -d \
+        --volume "$repo_path:/app" \
         --name "$container_name" \
         --network "$NETWORK_NAME" \
         --restart unless-stopped \
