@@ -16,6 +16,7 @@ This deployment pipeline automatically:
 - **Nginx Container**: Runs nginx in Docker, exposed on ports 80 (HTTP) and 443 (HTTPS)
 - **Docker Network**: `deployment-network` connects nginx and all application containers
 - **Subdomain Format**: `d_{userId}_dataset{datasetId}.datafynow.ai`
+- **Directory Format**: `d_{userId}_dataset{datasetId}_{repoName}.datafynow.ai` (the `_repoName` suffix is **not** part of the served subdomain)
 - **SSL/TLS**: Managed by Cloudflare (SSL termination at Cloudflare)
 
 ## Prerequisites
@@ -58,14 +59,14 @@ Start monitoring for new repositories:
 
 Repositories should be placed in `/home/forge/deployments` with the naming format:
 ```
-/home/forge/deployments/d_{userId}_dataset{datasetId}/
+/home/forge/deployments/d_{userId}_dataset{datasetId}_{repoName}.datafynow.ai/
 ```
 
 Each repository must contain a `Dockerfile.pf` file in its root directory.
 
 Example:
 ```
-/home/forge/deployments/d_123_dataset456/
+/home/forge/deployments/d_123_dataset456_demo.datafynow.ai/
 └── Dockerfile.pf
 ```
 
@@ -76,7 +77,7 @@ The watcher will automatically detect new directories and trigger deployment.
 To manually deploy a specific repository:
 
 ```bash
-./deploy.sh /home/forge/deployments/d_123_dataset456
+./deploy.sh /home/forge/deployments/d_123_dataset456_demo.datafynow.ai
 ```
 
 ## File Structure
@@ -120,8 +121,8 @@ In this case, the application will be accessible on port 3000.
 
 ## Subdomain Routing
 
-Each deployment gets a subdomain based on the repository directory name:
-- Directory: `d_123_dataset456`
+Each deployment gets a subdomain based on the repository directory name (excluding the `_repoName` suffix):
+- Directory: `d_123_dataset456_demo.datafynow.ai`
 - Subdomain: `d_123_dataset456.datafynow.ai`
 
 The nginx configuration automatically routes traffic to the corresponding Docker container.
@@ -146,7 +147,7 @@ If a repository doesn't contain `Dockerfile.pf`, the deployment will fail with a
 
 ### Invalid Directory Name
 
-Directory names must follow the format `d_{userId}_dataset{datasetId}`. Invalid names will cause deployment to fail.
+Directory names must follow the format `d_{userId}_dataset{datasetId}_{repoName}.datafynow.ai`. Invalid names will cause deployment to fail.
 
 ### Container Failures
 

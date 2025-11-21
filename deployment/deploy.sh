@@ -15,6 +15,9 @@ readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
 readonly LOCK_DIR="/tmp/deployment-locks"
 DEPLOY_LOCK_FD=""
+USERID=""
+DATASETID=""
+REPONAME=""
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -84,16 +87,22 @@ extract_ids() {
     local dir_name
     dir_name=$(basename "$repo_path")
     
-    # Expected format: d_{userId}_dataset{datasetId}[.domain]
-    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9._-]+)?$ ]]; then
-        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}[.domain], got: $dir_name"
+    # Expected format: d_{userId}_dataset{datasetId}[_repoName][.domain]
+    local dir_pattern='^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(?:_([a-zA-Z0-9_-]+))?(?:\.[a-zA-Z0-9._-]+)?$'
+    if [[ ! "$dir_name" =~ $dir_pattern ]]; then
+        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}[_repoName][.domain], got: $dir_name"
         exit 1
     fi
 
     USERID="${BASH_REMATCH[1]}"
     DATASETID="${BASH_REMATCH[2]}"
+    REPONAME="${BASH_REMATCH[3]:-}"
     
-    log "Extracted userid: $USERID, datasetid: $DATASETID"
+    if [[ -n "$REPONAME" ]]; then
+        log "Extracted userid: $USERID, datasetid: $DATASETID, repo: $REPONAME"
+    else
+        log "Extracted userid: $USERID, datasetid: $DATASETID"
+    fi
 }
 
 # Check for Dockerfile.pf
