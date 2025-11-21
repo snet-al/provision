@@ -70,14 +70,11 @@ patch_vite_config() {
     local repo_path="$1"
     local port="$2"
     local config_file=""
-    local extension=""
 
     if [[ -f "$repo_path/$VITE_CONFIG_TS" ]]; then
         config_file="$repo_path/$VITE_CONFIG_TS"
-        extension="ts"
     elif [[ -f "$repo_path/$VITE_CONFIG_JS" ]]; then
         config_file="$repo_path/$VITE_CONFIG_JS"
-        extension="js"
     else
         return 0
     fi
@@ -87,41 +84,37 @@ patch_vite_config() {
         log "Vite config already patched: $(basename "$config_file")"
         return 0
     fi
+    log "Patching Vite config in-place: $(basename "$config_file")"
 
-    local config_basename
-    config_basename=$(basename "$config_file")
-    local base_filename="${config_basename%.*}.base.${extension}"
-    local base_filepath="$repo_path/$base_filename"
-    if [[ ! -f "$base_filepath" ]]; then
-        log "Creating Vite base config: $base_filename"
-        mv "$config_file" "$base_filepath"
-    else
-        log "Base Vite config already present: $base_filename"
-    fi
+    node - "$config_file" "$port" <<'EOF'
+const fs = require('fs');
+const path = process.argv[2];
+const port = parseInt(process.argv[3], 10) || 5173;
+const marker = '// DEPLOY_ALLOWED_HOSTS_PATCH';
 
-    local import_path="./${base_filename}"
-    log "Writing patched Vite config: $config_basename"
+let source = fs.readFileSync(path, 'utf8');
+if (source.includes(marker)) {
+  process.exit(0);
+}
 
-    if [[ "$extension" == "ts" ]]; then
-        cat > "$config_file" <<EOF
-// DEPLOY_ALLOWED_HOSTS_PATCH
-import { defineConfig } from 'vite';
-import type { UserConfig, UserConfigExport } from 'vite';
-import baseConfig from '${import_path}';
+const exportRegex = /export\s+default\s+/;
+if (!exportRegex.test(source)) {
+  process.exit(0);
+}
 
-type ConfigFactory = (env: any) => Promise<UserConfig> | UserConfig;
+source = source.replace(exportRegex, 'const __deploy_user_export = ');
 
-const toFactory = (config: UserConfigExport): ConfigFactory => {
+const patch = `
+${marker}
+const __deploy_toFactory = (config) => {
   if (typeof config === 'function') {
-    return config as ConfigFactory;
+    return config;
   }
-  return () => config as UserConfig;
+  return () => config ?? {};
 };
 
-const enhanceHosts = (config: UserConfig): UserConfig => {
-  if (!config.server) {
-    config.server = {};
-  }
+const __deploy_enhanceHosts = (config = {}) => {
+  config.server = config.server || {};
   if (!config.server.host) {
     config.server.host = '0.0.0.0';
   }
@@ -138,45 +131,16 @@ const enhanceHosts = (config: UserConfig): UserConfig => {
   return config;
 };
 
-export default defineConfig(async (env) => {
-  const factory = toFactory(baseConfig);
-  const resolved = await factory(env) ?? {};
-  return enhanceHosts(resolved);
-});
-EOF
-    else
-        cat > "$config_file" <<EOF
-// DEPLOY_ALLOWED_HOSTS_PATCH
-import { defineConfig } from 'vite';
-import baseConfig from '${import_path}';
+const __deploy_config_factory = __deploy_toFactory(__deploy_user_export);
 
-const toFactory = (config) => {
-  if (typeof config === 'function') {
-    return config;
-  }
-  return () => config;
+export default async (env) => {
+  const resolved = await __deploy_config_factory(env);
+  return __deploy_enhanceHosts(resolved);
 };
+`;
 
-const enhanceHosts = (config) => {
-  config = config || {};
-  config.server = config.server || {};
-  config.server.host = config.server.host || '0.0.0.0';
-  config.server.port = config.server.port || ${port};
-  config.server.allowedHosts = config.server.allowedHosts || [
-    /^app_d[a-zA-Z0-9-]+_dataset\\d+(_upstream)?$/,
-    '.datafynow.ai',
-    'localhost',
-  ];
-  return config;
-};
-
-export default defineConfig(async (env) => {
-  const factory = toFactory(baseConfig);
-  const resolved = await factory(env);
-  return enhanceHosts(resolved);
-});
+fs.writeFileSync(path, `${source.trimEnd()}\n\n${patch}\n`);
 EOF
-    fi
 }
 
 # Validate repo path
