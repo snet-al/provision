@@ -11,6 +11,15 @@ readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly DEPLOYMENTS_DIR="/home/forge/deployments"
 readonly DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
 readonly WATCH_INTERVAL=5  # seconds to wait before processing new directory
+readonly NGINX_CONTAINER_NAME="deployment-nginx"
+readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
+readonly WATCH_LOCK_DIR="/tmp/deployment-watch-locks"
+declare -a WATCHER_PIDS=()
+# Ensure watcher lock directory exists
+ensure_watch_lock_dir() {
+    mkdir -p "$WATCH_LOCK_DIR"
+}
+
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -61,6 +70,9 @@ check_prerequisites() {
     # Make deploy script executable
     chmod +x "$DEPLOY_SCRIPT"
 
+    # Ensure watcher lock directory exists
+    ensure_watch_lock_dir
+
     log "Prerequisites check completed"
 }
 
@@ -73,7 +85,7 @@ process_existing_dirs() {
         if [[ -d "$dir" ]] && [[ -f "$dir/Dockerfile.pf" ]]; then
             log "Found existing repository: $(basename "$dir")"
             if "$DEPLOY_SCRIPT" "$dir"; then
-                ((count++))
+                ((count+=1))
                 log "Deployed existing repository: $(basename "$dir")"
             else
                 log_error "Failed to deploy existing repository: $(basename "$dir")"
@@ -91,10 +103,16 @@ process_existing_dirs() {
 # Deploy a repository
 deploy_repository() {
     local repo_path="$1"
+    local trigger_reason="${2:-"New repository detected"}"
+    local watch_lock_path="${3:-""}"
     local dir_name
     dir_name=$(basename "$repo_path")
+
+    if [[ -n "$watch_lock_path" ]]; then
+        trap "rm -rf '$watch_lock_path'" EXIT
+    fi
     
-    log "New repository detected: $dir_name"
+    log "$trigger_reason: $dir_name"
     
     # Wait a bit for directory to be fully created
     sleep "$WATCH_INTERVAL"
@@ -121,6 +139,25 @@ deploy_repository() {
     fi
 }
 
+# Schedule deployment with per-repo locking
+schedule_deployment() {
+    local repo_path="$1"
+    local trigger_reason="${2:-"New repository detected"}"
+    local dir_name
+    dir_name=$(basename "$repo_path")
+    ensure_watch_lock_dir
+
+    local lock_path="$WATCH_LOCK_DIR/${dir_name}.lock"
+
+    if ! mkdir "$lock_path" 2>/dev/null; then
+        return
+    fi
+
+    (
+        deploy_repository "$repo_path" "$trigger_reason" "$lock_path" || true
+    ) &
+}
+
 # Watch for new directories
 watch_for_new_dirs() {
     log "Starting file watcher on: $DEPLOYMENTS_DIR"
@@ -136,9 +173,96 @@ watch_for_new_dirs() {
         if [[ -d "$path" ]]; then
             # Ignore if it's the deployments directory itself
             if [[ "$path" != "$DEPLOYMENTS_DIR" ]]; then
-                # Deploy in background to allow processing multiple events
-                (deploy_repository "$path" || true) &
+                schedule_deployment "$path" "New repository detected"
             fi
+        fi
+    done
+}
+
+watch_for_file_content_changes() {
+    log "Watching for file changes in $DEPLOYMENTS_DIR..."
+
+    inotifywait -m -r "$DEPLOYMENTS_DIR" \
+        -e modify -e close_write -e moved_to -e moved_from -e create -e delete \
+        --format '%w%f' \
+        -q 2>/dev/null | while read -r changed_path; do
+
+        if [[ "$changed_path" == "$DEPLOYMENTS_DIR" ]] || [[ "$changed_path" == "$DEPLOYMENTS_DIR/" ]]; then
+            continue
+        fi
+
+        local relative_path="${changed_path#$DEPLOYMENTS_DIR/}"
+        if [[ "$relative_path" == "$changed_path" ]] || [[ -z "$relative_path" ]]; then
+            continue
+        fi
+
+        local repo_name="${relative_path%%/*}"
+        if [[ -z "$repo_name" ]]; then
+            continue
+        fi
+
+        local repo_path="$DEPLOYMENTS_DIR/$repo_name"
+        if [[ ! -d "$repo_path" ]]; then
+            continue
+        fi
+
+        if [[ -f "$repo_path/Dockerfile.pf" ]]; then
+            schedule_deployment "$repo_path" "File change detected"
+        else
+            log_error "File change detected in $repo_name but Dockerfile.pf is missing"
+        fi
+    done
+}
+
+cleanup_removed_repository() {
+    local dir_name="$1"
+
+    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9._-]+)?$ ]]; then
+        log "Skipping cleanup for unrecognized directory: $dir_name"
+        return
+    fi
+
+    local user_id="${BASH_REMATCH[1]}"
+    local dataset_id="${BASH_REMATCH[2]}"
+    local container_name="app_d${user_id}_dataset${dataset_id}"
+    local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${user_id}_dataset${dataset_id}.conf"
+
+    if docker ps -a --format '{{.Names}}' | grep -Fx "$container_name" >/dev/null 2>&1; then
+        log "Stopping container for removed repository: $dir_name"
+        docker stop "$container_name" >/dev/null 2>&1 || true
+        docker rm "$container_name" >/dev/null 2>&1 || true
+        log "Removed container: $container_name"
+    else
+        log "No container to remove for: $dir_name"
+    fi
+
+    if [[ -f "$config_file" ]]; then
+        log "Removing nginx config for removed repository: $dir_name"
+        rm -f "$config_file"
+        if docker exec "$NGINX_CONTAINER_NAME" nginx -s reload >/dev/null 2>&1; then
+            log "Reloaded nginx after removing config for: $dir_name"
+        else
+            log_error "Failed to reload nginx after removing config for: $dir_name"
+        fi
+    else
+        log "No nginx config found for: $dir_name"
+    fi
+}
+
+watch_for_removed_dirs() {
+    log "Watching for repository deletions in $DEPLOYMENTS_DIR..."
+
+    inotifywait -m "$DEPLOYMENTS_DIR" \
+        -e delete -e moved_from \
+        --format '%e %f' \
+        -q 2>/dev/null | while read -r event name; do
+
+        if [[ -z "$name" ]]; then
+            continue
+        fi
+
+        if [[ "$event" == *"ISDIR"* ]]; then
+            cleanup_removed_repository "$name"
         fi
     done
 }
@@ -146,6 +270,9 @@ watch_for_new_dirs() {
 # Signal handler for graceful shutdown
 cleanup() {
     log "Received shutdown signal. Stopping watcher..."
+    if [[ ${#WATCHER_PIDS[@]} -gt 0 ]]; then
+        kill "${WATCHER_PIDS[@]}" 2>/dev/null || true
+    fi
     exit 0
 }
 
@@ -160,8 +287,17 @@ main() {
     # Process existing directories first
     process_existing_dirs
     
-    # Start watching for new directories
-    watch_for_new_dirs
+    # Start watchers
+    watch_for_new_dirs &
+    WATCHER_PIDS+=($!)
+
+    watch_for_file_content_changes &
+    WATCHER_PIDS+=($!)
+
+    watch_for_removed_dirs &
+    WATCHER_PIDS+=($!)
+
+    wait "${WATCHER_PIDS[@]}"
 }
 
 # Check if running as daemon

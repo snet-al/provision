@@ -13,6 +13,8 @@ readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
 readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
+readonly LOCK_DIR="/tmp/deployment-locks"
+DEPLOY_LOCK_FD=""
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -37,6 +39,30 @@ log_error() {
     echo "DEPLOY ERROR: $1" >&2
 }
 
+# Deployment locking helpers
+ensure_lock_dir() {
+    mkdir -p "$LOCK_DIR"
+}
+
+acquire_deploy_lock() {
+    local lock_name="$1"
+    ensure_lock_dir
+    local lock_file="$LOCK_DIR/${lock_name}.lock"
+    exec {DEPLOY_LOCK_FD}> "$lock_file"
+    if ! flock -n "$DEPLOY_LOCK_FD"; then
+        log "Another deployment is already running for: $lock_name. Skipping."
+        exit 0
+    fi
+}
+
+release_deploy_lock() {
+    if [[ -n "${DEPLOY_LOCK_FD:-}" ]]; then
+        flock -u "$DEPLOY_LOCK_FD" 2>/dev/null || true
+        exec {DEPLOY_LOCK_FD}>&-
+        DEPLOY_LOCK_FD=""
+    fi
+}
+
 # Validate repo path
 validate_repo_path() {
     local repo_path="$1"
@@ -58,9 +84,9 @@ extract_ids() {
     local dir_name
     dir_name=$(basename "$repo_path")
     
-    # Expected format: d_{userId}_dataset{datasetId}
-    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)$ ]]; then
-        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}, got: $dir_name"
+    # Expected format: d_{userId}_dataset{datasetId}[.domain]
+    if [[ ! "$dir_name" =~ ^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9._-]+)?$ ]]; then
+        log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}[.domain], got: $dir_name"
         exit 1
     fi
 
@@ -107,8 +133,11 @@ build_image() {
     local image_name="$2"
     
     log "Building Docker image: $image_name"
+
+    # Ensure no stale tag remains from previous builds
+    cleanup_image "$image_name"
     
-    if docker build -t "$image_name" -f "$repo_path/Dockerfile.pf" "$repo_path"; then
+    if docker build --no-cache -t "$image_name" -f "$repo_path/Dockerfile.pf" "$repo_path"; then
         log "Docker image built successfully: $image_name"
     else
         log_error "Failed to build Docker image: $image_name"
@@ -128,18 +157,56 @@ cleanup_existing_container() {
     fi
 }
 
+# Remove existing image if present
+cleanup_image() {
+    local image_name="$1"
+    
+    if docker images --format '{{.Repository}}:{{.Tag}}' | grep -Fx "$image_name" >/dev/null 2>&1; then
+        log "Removing Docker image: $image_name"
+        docker image rm "$image_name" >/dev/null 2>&1 || true
+    else
+        log "No Docker image found to remove: $image_name"
+    fi
+}
+
+# Wait until nginx container can resolve the app container hostname
+wait_for_container_dns() {
+    local container_name="$1"
+    local retries=5
+    local delay=5
+    local attempt=1
+
+    while (( attempt <= retries )); do
+        if docker exec "$NGINX_CONTAINER_NAME" getent hosts "$container_name" >/dev/null 2>&1; then
+            log "DNS ready inside nginx for container: $container_name"
+            return 0
+        fi
+
+        log "Waiting for container DNS registration ($attempt/$retries): $container_name"
+        sleep "$delay"
+        ((attempt++))
+    done
+
+    log_error "Container $container_name is not resolvable inside nginx after ${retries} attempts"
+    return 1
+}
+
 # Run Docker container
 run_container() {
     local container_name="$1"
     local image_name="$2"
     local port="$3"
+    local code_dir="$4"
     
-    log "Running container: $container_name on port $port"
+    log "Running container: $container_name on port $port using code at $code_dir"
     
     if docker run -d \
         --name "$container_name" \
         --network "$NETWORK_NAME" \
         --restart unless-stopped \
+        -p "$port:5173" \
+        -v "$code_dir":/app \
+        -v "nm_${container_name}:/app/node_modules" \
         "$image_name"; then
         log "Container started successfully: $container_name"
     else
@@ -217,6 +284,7 @@ reload_nginx() {
 rollback() {
     local container_name="$1"
     local config_file="$2"
+    local image_name="$3"
     
     log_error "Rolling back deployment..."
     
@@ -229,6 +297,9 @@ rollback() {
     
     # Try to reload nginx
     docker exec "$NGINX_CONTAINER_NAME" nginx -s reload 2>/dev/null || true
+    
+    # Remove built image to avoid stale artifacts
+    cleanup_image "$image_name"
     
     log_error "Rollback completed"
 }
@@ -260,6 +331,9 @@ main() {
     local port
     port=$(extract_port_from_dockerfile "$dockerfile_path")
     local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
+
+    acquire_deploy_lock "$container_name"
+    trap release_deploy_lock EXIT
     
     # Check if already deployed
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
@@ -272,11 +346,12 @@ main() {
     if ! (
         cleanup_existing_container "$container_name"
         build_image "$repo_path" "$image_name"
-        run_container "$container_name" "$image_name" "$port"
+        run_container "$container_name" "$image_name" "$port" "$repo_path"
+        wait_for_container_dns "$container_name"
         generate_nginx_config "$template_file" "$NGINX_CONFIG_DIR/sites-enabled" "$USERID" "$DATASETID" "$port"
         reload_nginx
     ); then
-        rollback "$container_name" "$config_file"
+        rollback "$container_name" "$config_file" "$image_name"
         exit 1
     fi
     
