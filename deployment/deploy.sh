@@ -93,31 +93,38 @@ patch_vite_config() {
     fi
     log "Patching Vite config in-place: $(basename "$config_file")"
 
-    node - "$config_file" "$port" <<'EOF'
-const fs = require('fs');
-const path = process.argv[2];
-const port = parseInt(process.argv[3], 10) || 5173;
-const marker = '// DEPLOY_ALLOWED_HOSTS_PATCH';
+    local tmp_file
+    tmp_file=$(mktemp)
+    if ! awk 'BEGIN{patched=0}
+    {
+        if(patched==0){
+            gsub_cnt = sub(/export[ \t]+default[ \t]+/, "const __deploy_user_export = ", $0);
+            if(gsub_cnt>0){
+                patched=1;
+            }
+        }
+        print
+    }
+    END{
+        if(patched==0){
+            exit 1
+        }
+    }' "$config_file" > "$tmp_file"; then
+        rm -f "$tmp_file"
+        log_error "Failed to patch Vite config export in $config_file"
+        exit 1
+    fi
 
-let source = fs.readFileSync(path, 'utf8');
-if (source.includes(marker)) {
-  process.exit(0);
-}
+    mv "$tmp_file" "$config_file"
 
-const exportRegex = /export\s+default\s+/;
-if (!exportRegex.test(source)) {
-  process.exit(0);
-}
+    cat <<EOF >> "$config_file"
 
-source = source.replace(exportRegex, 'const __deploy_user_export = ');
-
-const patch = `
-${marker}
+$marker
 const __deploy_toFactory = (config) => {
   if (typeof config === 'function') {
     return config;
   }
-  return () => config ?? {};
+  return () => (config ?? {});
 };
 
 const __deploy_enhanceHosts = (config = {}) => {
@@ -138,9 +145,6 @@ export default async (env) => {
   const resolved = await __deploy_config_factory(env);
   return __deploy_enhanceHosts(resolved);
 };
-`;
-
-fs.writeFileSync(path, `${source.trimEnd()}\n\n${patch}\n`);
 EOF
 }
 
