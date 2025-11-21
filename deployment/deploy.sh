@@ -71,10 +71,17 @@ patch_vite_config() {
     local port="$2"
     local config_file=""
 
-    if [[ -f "$repo_path/$VITE_CONFIG_TS" ]]; then
-        config_file="$repo_path/$VITE_CONFIG_TS"
-    elif [[ -f "$repo_path/$VITE_CONFIG_JS" ]]; then
-        config_file="$repo_path/$VITE_CONFIG_JS"
+    local ts_path="$repo_path/$VITE_CONFIG_TS"
+    local js_path="$repo_path/$VITE_CONFIG_JS"
+    if [[ -f "$ts_path" && -f "$js_path" ]]; then
+        log "Removing redundant Vite config: $(basename "$js_path")"
+        rm -f "$js_path"
+    fi
+
+    if [[ -f "$ts_path" ]]; then
+        config_file="$ts_path"
+    elif [[ -f "$js_path" ]]; then
+        config_file="$js_path"
     else
         return 0
     fi
@@ -121,13 +128,7 @@ const __deploy_enhanceHosts = (config = {}) => {
   if (!config.server.port) {
     config.server.port = ${port};
   }
-  if (!config.server.allowedHosts) {
-    config.server.allowedHosts = [
-      /^app_d[a-zA-Z0-9-]+_dataset\\d+(_upstream)?$/,
-      '.datafynow.ai',
-      'localhost',
-    ];
-  }
+  config.server.allowedHosts = true;
   return config;
 };
 
