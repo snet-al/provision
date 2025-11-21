@@ -15,8 +15,6 @@ readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
 readonly LOCK_DIR="/tmp/deployment-locks"
 DEPLOY_LOCK_FD=""
-readonly VITE_CONFIG_TS="vite.config.ts"
-readonly VITE_CONFIG_JS="vite.config.js"
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -63,89 +61,6 @@ release_deploy_lock() {
         exec {DEPLOY_LOCK_FD}>&-
         DEPLOY_LOCK_FD=""
     fi
-}
-
-# Detect and patch Vite config to allow nginx upstream hostnames
-patch_vite_config() {
-    local repo_path="$1"
-    local port="$2"
-    local config_file=""
-
-    local ts_path="$repo_path/$VITE_CONFIG_TS"
-    local js_path="$repo_path/$VITE_CONFIG_JS"
-    if [[ -f "$ts_path" && -f "$js_path" ]]; then
-        log "Removing redundant Vite config: $(basename "$js_path")"
-        rm -f "$js_path"
-    fi
-
-    if [[ -f "$ts_path" ]]; then
-        config_file="$ts_path"
-    elif [[ -f "$js_path" ]]; then
-        config_file="$js_path"
-    else
-        return 0
-    fi
-
-    local marker="// DEPLOY_ALLOWED_HOSTS_PATCH"
-    if grep -q "$marker" "$config_file" 2>/dev/null; then
-        log "Vite config already patched: $(basename "$config_file")"
-        return 0
-    fi
-    log "Patching Vite config in-place: $(basename "$config_file")"
-
-    local tmp_file
-    tmp_file=$(mktemp)
-    if ! awk 'BEGIN{patched=0}
-    {
-        if(patched==0){
-            gsub_cnt = sub(/export[ \t]+default[ \t]+/, "const __deploy_user_export = ", $0);
-            if(gsub_cnt>0){
-                patched=1;
-            }
-        }
-        print
-    }
-    END{
-        if(patched==0){
-            exit 1
-        }
-    }' "$config_file" > "$tmp_file"; then
-        rm -f "$tmp_file"
-        log_error "Failed to patch Vite config export in $config_file"
-        exit 1
-    fi
-
-    mv "$tmp_file" "$config_file"
-
-    cat <<EOF >> "$config_file"
-
-$marker
-const __deploy_toFactory = (config) => {
-  if (typeof config === 'function') {
-    return config;
-  }
-  return () => (config ?? {});
-};
-
-const __deploy_enhanceHosts = (config = {}) => {
-  config.server = config.server || {};
-  if (!config.server.host) {
-    config.server.host = '0.0.0.0';
-  }
-  if (!config.server.port) {
-    config.server.port = ${port};
-  }
-  config.server.allowedHosts = true;
-  return config;
-};
-
-const __deploy_config_factory = __deploy_toFactory(__deploy_user_export);
-
-export default async (env) => {
-  const resolved = await __deploy_config_factory(env);
-  return __deploy_enhanceHosts(resolved);
-};
-EOF
 }
 
 # Validate repo path
@@ -412,8 +327,6 @@ main() {
     local port
     port=$(extract_port_from_dockerfile "$dockerfile_path")
     local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
-
-    patch_vite_config "$repo_path" "$port"
 
     acquire_deploy_lock "$container_name"
     trap release_deploy_lock EXIT
