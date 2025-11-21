@@ -13,6 +13,8 @@ readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
 readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
+readonly LOCK_DIR="/tmp/deployment-locks"
+DEPLOY_LOCK_FD=""
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -35,6 +37,30 @@ log_error() {
     ensure_log_file
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEPLOY ERROR: $1" | tee -a "$LOG_FILE" > /dev/null
     echo "DEPLOY ERROR: $1" >&2
+}
+
+# Deployment locking helpers
+ensure_lock_dir() {
+    mkdir -p "$LOCK_DIR"
+}
+
+acquire_deploy_lock() {
+    local lock_name="$1"
+    ensure_lock_dir
+    local lock_file="$LOCK_DIR/${lock_name}.lock"
+    exec {DEPLOY_LOCK_FD}> "$lock_file"
+    if ! flock -n "$DEPLOY_LOCK_FD"; then
+        log "Another deployment is already running for: $lock_name. Skipping."
+        exit 0
+    fi
+}
+
+release_deploy_lock() {
+    if [[ -n "${DEPLOY_LOCK_FD:-}" ]]; then
+        flock -u "$DEPLOY_LOCK_FD" 2>/dev/null || true
+        exec {DEPLOY_LOCK_FD}>&-
+        DEPLOY_LOCK_FD=""
+    fi
 }
 
 # Validate repo path
@@ -301,6 +327,9 @@ main() {
     local port
     port=$(extract_port_from_dockerfile "$dockerfile_path")
     local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
+
+    acquire_deploy_lock "$container_name"
+    trap release_deploy_lock EXIT
     
     # Check if already deployed
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then

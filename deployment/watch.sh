@@ -13,8 +13,13 @@ readonly DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
 readonly WATCH_INTERVAL=5  # seconds to wait before processing new directory
 readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
+readonly WATCH_LOCK_DIR="/tmp/deployment-watch-locks"
 declare -a WATCHER_PIDS=()
-declare -a WATCHER_PIDS=()
+# Ensure watcher lock directory exists
+ensure_watch_lock_dir() {
+    mkdir -p "$WATCH_LOCK_DIR"
+}
+
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -65,6 +70,9 @@ check_prerequisites() {
     # Make deploy script executable
     chmod +x "$DEPLOY_SCRIPT"
 
+    # Ensure watcher lock directory exists
+    ensure_watch_lock_dir
+
     log "Prerequisites check completed"
 }
 
@@ -96,8 +104,13 @@ process_existing_dirs() {
 deploy_repository() {
     local repo_path="$1"
     local trigger_reason="${2:-"New repository detected"}"
+    local watch_lock_path="${3:-""}"
     local dir_name
     dir_name=$(basename "$repo_path")
+
+    if [[ -n "$watch_lock_path" ]]; then
+        trap "rm -rf '$watch_lock_path'" EXIT
+    fi
     
     log "$trigger_reason: $dir_name"
     
@@ -126,6 +139,25 @@ deploy_repository() {
     fi
 }
 
+# Schedule deployment with per-repo locking
+schedule_deployment() {
+    local repo_path="$1"
+    local trigger_reason="${2:-"New repository detected"}"
+    local dir_name
+    dir_name=$(basename "$repo_path")
+    ensure_watch_lock_dir
+
+    local lock_path="$WATCH_LOCK_DIR/${dir_name}.lock"
+
+    if ! mkdir "$lock_path" 2>/dev/null; then
+        return
+    fi
+
+    (
+        deploy_repository "$repo_path" "$trigger_reason" "$lock_path" || true
+    ) &
+}
+
 # Watch for new directories
 watch_for_new_dirs() {
     log "Starting file watcher on: $DEPLOYMENTS_DIR"
@@ -141,8 +173,7 @@ watch_for_new_dirs() {
         if [[ -d "$path" ]]; then
             # Ignore if it's the deployments directory itself
             if [[ "$path" != "$DEPLOYMENTS_DIR" ]]; then
-                # Deploy in background to allow processing multiple events
-                (deploy_repository "$path" || true) &
+                schedule_deployment "$path" "New repository detected"
             fi
         fi
     done
@@ -176,7 +207,7 @@ watch_for_file_content_changes() {
         fi
 
         if [[ -f "$repo_path/Dockerfile.pf" ]]; then
-            (deploy_repository "$repo_path" "File change detected" || true) &
+            schedule_deployment "$repo_path" "File change detected"
         else
             log_error "File change detected in $repo_name but Dockerfile.pf is missing"
         fi
