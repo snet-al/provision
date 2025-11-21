@@ -15,6 +15,8 @@ readonly DOMAIN_SUFFIX="datafynow.ai"
 readonly DEFAULT_PORT="8080"
 readonly LOCK_DIR="/tmp/deployment-locks"
 DEPLOY_LOCK_FD=""
+readonly VITE_CONFIG_TS="vite.config.ts"
+readonly VITE_CONFIG_JS="vite.config.js"
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -60,6 +62,120 @@ release_deploy_lock() {
         flock -u "$DEPLOY_LOCK_FD" 2>/dev/null || true
         exec {DEPLOY_LOCK_FD}>&-
         DEPLOY_LOCK_FD=""
+    fi
+}
+
+# Detect and patch Vite config to allow nginx upstream hostnames
+patch_vite_config() {
+    local repo_path="$1"
+    local port="$2"
+    local config_file=""
+    local extension=""
+
+    if [[ -f "$repo_path/$VITE_CONFIG_TS" ]]; then
+        config_file="$repo_path/$VITE_CONFIG_TS"
+        extension="ts"
+    elif [[ -f "$repo_path/$VITE_CONFIG_JS" ]]; then
+        config_file="$repo_path/$VITE_CONFIG_JS"
+        extension="js"
+    else
+        return 0
+    fi
+
+    local marker="// DEPLOY_ALLOWED_HOSTS_PATCH"
+    if grep -q "$marker" "$config_file" 2>/dev/null; then
+        log "Vite config already patched: $(basename "$config_file")"
+        return 0
+    fi
+
+    local config_basename
+    config_basename=$(basename "$config_file")
+    local base_filename="${config_basename%.*}.base.${extension}"
+    local base_filepath="$repo_path/$base_filename"
+    if [[ ! -f "$base_filepath" ]]; then
+        log "Creating Vite base config: $base_filename"
+        mv "$config_file" "$base_filepath"
+    else
+        log "Base Vite config already present: $base_filename"
+    fi
+
+    local import_path="./${base_filename}"
+    log "Writing patched Vite config: $config_basename"
+
+    if [[ "$extension" == "ts" ]]; then
+        cat > "$config_file" <<EOF
+// DEPLOY_ALLOWED_HOSTS_PATCH
+import { defineConfig } from 'vite';
+import type { UserConfig, UserConfigExport } from 'vite';
+import baseConfig from '${import_path}';
+
+type ConfigFactory = (env: any) => Promise<UserConfig> | UserConfig;
+
+const toFactory = (config: UserConfigExport): ConfigFactory => {
+  if (typeof config === 'function') {
+    return config as ConfigFactory;
+  }
+  return () => config as UserConfig;
+};
+
+const enhanceHosts = (config: UserConfig): UserConfig => {
+  if (!config.server) {
+    config.server = {};
+  }
+  if (!config.server.host) {
+    config.server.host = '0.0.0.0';
+  }
+  if (!config.server.port) {
+    config.server.port = ${port};
+  }
+  if (!config.server.allowedHosts) {
+    config.server.allowedHosts = [
+      /^app_d[a-zA-Z0-9-]+_dataset\\d+(_upstream)?$/,
+      '.datafynow.ai',
+      'localhost',
+    ];
+  }
+  return config;
+};
+
+export default defineConfig(async (env) => {
+  const factory = toFactory(baseConfig);
+  const resolved = await factory(env) ?? {};
+  return enhanceHosts(resolved);
+});
+EOF
+    else
+        cat > "$config_file" <<EOF
+// DEPLOY_ALLOWED_HOSTS_PATCH
+import { defineConfig } from 'vite';
+import baseConfig from '${import_path}';
+
+const toFactory = (config) => {
+  if (typeof config === 'function') {
+    return config;
+  }
+  return () => config;
+};
+
+const enhanceHosts = (config) => {
+  config = config || {};
+  config.server = config.server || {};
+  config.server.host = config.server.host || '0.0.0.0';
+  config.server.port = config.server.port || ${port};
+  config.server.allowedHosts = config.server.allowedHosts || [
+    /^app_d[a-zA-Z0-9-]+_dataset\\d+(_upstream)?$/,
+    '.datafynow.ai',
+    'localhost',
+  ];
+  return config;
+};
+
+export default defineConfig(async (env) => {
+  const factory = toFactory(baseConfig);
+  const resolved = await factory(env);
+  return enhanceHosts(resolved);
+});
+EOF
     fi
 }
 
@@ -327,6 +443,8 @@ main() {
     local port
     port=$(extract_port_from_dockerfile "$dockerfile_path")
     local config_file="$NGINX_CONFIG_DIR/sites-enabled/site_d${USERID}_dataset${DATASETID}.conf"
+
+    patch_vite_config "$repo_path" "$port"
 
     acquire_deploy_lock "$container_name"
     trap release_deploy_lock EXIT
