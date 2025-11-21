@@ -196,13 +196,17 @@ run_container() {
     local container_name="$1"
     local image_name="$2"
     local port="$3"
+    local code_dir="$4"
     
-    log "Running container: $container_name on port $port"
+    log "Running container: $container_name on port $port using code at $code_dir"
     
     if docker run -d \
         --name "$container_name" \
         --network "$NETWORK_NAME" \
         --restart unless-stopped \
+        -p "$port:5173" \
+        -v "$code_dir":/app \
+        -v "nm_${container_name}:/app/node_modules" \
         "$image_name"; then
         log "Container started successfully: $container_name"
     else
@@ -342,7 +346,7 @@ main() {
     if ! (
         cleanup_existing_container "$container_name"
         build_image "$repo_path" "$image_name"
-        run_container "$container_name" "$image_name" "$port"
+        run_container "$container_name" "$image_name" "$port" "$repo_path"
         wait_for_container_dns "$container_name"
         generate_nginx_config "$template_file" "$NGINX_CONFIG_DIR/sites-enabled" "$USERID" "$DATASETID" "$port"
         reload_nginx
