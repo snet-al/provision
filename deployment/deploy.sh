@@ -219,7 +219,6 @@ run_container() {
         --name "$container_name" \
         --network "$NETWORK_NAME" \
         --restart unless-stopped \
-        -p "$port:5173" \
         -v "$code_dir":/app \
         -v "nm_${container_name}:/app/node_modules" \
         "$image_name"; then
