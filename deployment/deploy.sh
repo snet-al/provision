@@ -18,6 +18,7 @@ DEPLOY_LOCK_FD=""
 USERID=""
 DATASETID=""
 REPONAME=""
+FORCE_REDEPLOY="${FORCE_REDEPLOY:-0}"
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -320,11 +321,42 @@ rollback() {
 
 # Main deployment function
 main() {
-    local repo_path="${1:-}"
+    local repo_path=""
+    local force_redeploy_arg=0
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --force-redeploy)
+                force_redeploy_arg=1
+                shift
+                ;;
+            -h|--help)
+                log_error "Usage: $0 <repo_path> [--force-redeploy]"
+                exit 1
+                ;;
+            *)
+                if [[ -z "$repo_path" ]]; then
+                    repo_path="$1"
+                    shift
+                else
+                    log_error "Unexpected argument: $1"
+                    exit 1
+                fi
+                ;;
+        esac
+    done
     
     if [[ -z "$repo_path" ]]; then
-        log_error "Usage: $0 <repo_path>"
+        log_error "Usage: $0 <repo_path> [--force-redeploy]"
         exit 1
+    fi
+    
+    if [[ "${DEPLOY_FORCE_REDEPLOY:-0}" == "1" ]]; then
+        FORCE_REDEPLOY=1
+    fi
+    
+    if [[ "$force_redeploy_arg" -eq 1 ]]; then
+        FORCE_REDEPLOY=1
     fi
     
     # Convert to absolute path
@@ -349,10 +381,18 @@ main() {
     acquire_deploy_lock "$container_name"
     trap release_deploy_lock EXIT
     
-    # Check if already deployed
+    local container_running=0
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        container_running=1
+    fi
+    
+    if (( container_running )) && [[ "$FORCE_REDEPLOY" != "1" ]]; then
         log "Container $container_name is already running. Skipping deployment."
         exit 0
+    fi
+    
+    if (( container_running )) && [[ "$FORCE_REDEPLOY" == "1" ]]; then
+        log "Container $container_name is running but force redeploy requested. Proceeding."
     fi
     
     # Deploy with error handling

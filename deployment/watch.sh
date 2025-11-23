@@ -105,6 +105,7 @@ deploy_repository() {
     local repo_path="$1"
     local trigger_reason="${2:-"New repository detected"}"
     local watch_lock_path="${3:-""}"
+    local force_redeploy="${4:-0}"
     local dir_name
     dir_name=$(basename "$repo_path")
 
@@ -112,7 +113,11 @@ deploy_repository() {
         trap "rm -rf '$watch_lock_path'" EXIT
     fi
     
-    log "$trigger_reason: $dir_name"
+    if [[ "$force_redeploy" == "1" ]]; then
+        log "$trigger_reason: $dir_name (force redeploy enabled)"
+    else
+        log "$trigger_reason: $dir_name"
+    fi
     
     # Wait a bit for directory to be fully created
     sleep "$WATCH_INTERVAL"
@@ -131,7 +136,17 @@ deploy_repository() {
     
     # Run deployment
     log "Starting deployment for: $repo_path"
-    if "$DEPLOY_SCRIPT" "$repo_path"; then
+
+    local deploy_status=0
+    if [[ "$force_redeploy" == "1" ]]; then
+        DEPLOY_FORCE_REDEPLOY=1 "$DEPLOY_SCRIPT" "$repo_path"
+        deploy_status=$?
+    else
+        "$DEPLOY_SCRIPT" "$repo_path"
+        deploy_status=$?
+    fi
+
+    if [[ $deploy_status -eq 0 ]]; then
         log "Deployment completed successfully for: $dir_name"
     else
         log_error "Deployment failed for: $dir_name"
@@ -143,6 +158,7 @@ deploy_repository() {
 schedule_deployment() {
     local repo_path="$1"
     local trigger_reason="${2:-"New repository detected"}"
+    local force_redeploy="${3:-0}"
     local dir_name
     dir_name=$(basename "$repo_path")
     ensure_watch_lock_dir
@@ -154,7 +170,7 @@ schedule_deployment() {
     fi
 
     (
-        deploy_repository "$repo_path" "$trigger_reason" "$lock_path" || true
+        deploy_repository "$repo_path" "$trigger_reason" "$lock_path" "$force_redeploy" || true
     ) &
 }
 
@@ -207,7 +223,11 @@ watch_for_file_content_changes() {
         fi
 
         if [[ -f "$repo_path/Dockerfile.pf" ]]; then
-            schedule_deployment "$repo_path" "File change detected"
+            if [[ "$relative_path" == "$repo_name/Dockerfile.pf" ]]; then
+                schedule_deployment "$repo_path" "Dockerfile change detected" "1"
+            else
+                log "File change detected in $repo_name ($relative_path). Skipping redeploy because Dockerfile.pf was not modified."
+            fi
         else
             log_error "File change detected in $repo_name but Dockerfile.pf is missing"
         fi
