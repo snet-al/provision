@@ -217,7 +217,7 @@ watch_for_file_content_changes() {
 cleanup_removed_repository() {
     local dir_name="$1"
 
-    local dir_pattern='^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(?:_([a-zA-Z0-9_-]+))?(?:\.[a-zA-Z0-9._-]+)?$'
+    local dir_pattern='^d_([[:alnum:]_-]+)_dataset([[:alnum:]_-]+)(_[[:alnum:]_-]+)?(\.[[:alnum:]._-]+)?$'
     if [[ ! "$dir_name" =~ $dir_pattern ]]; then
         log "Skipping cleanup for unrecognized directory: $dir_name"
         return

@@ -88,7 +88,7 @@ extract_ids() {
     dir_name=$(basename "$repo_path")
     
     # Expected format: d_{userId}_dataset{datasetId}[_repoName][.domain]
-    local dir_pattern='^d_([a-zA-Z0-9_-]+)_dataset([a-zA-Z0-9_-]+)(?:_([a-zA-Z0-9_-]+))?(?:\.[a-zA-Z0-9._-]+)?$'
+    local dir_pattern='^d_([[:alnum:]_-]+)_dataset([[:alnum:]_-]+)(_[[:alnum:]_-]+)?(\.[[:alnum:]._-]+)?$'
     if [[ ! "$dir_name" =~ $dir_pattern ]]; then
         log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}[_repoName][.domain], got: $dir_name"
         exit 1
@@ -96,7 +96,12 @@ extract_ids() {
 
     USERID="${BASH_REMATCH[1]}"
     DATASETID="${BASH_REMATCH[2]}"
-    REPONAME="${BASH_REMATCH[3]:-}"
+    local repo_segment="${BASH_REMATCH[3]:-}"
+    if [[ -n "$repo_segment" ]]; then
+        REPONAME="${repo_segment:1}"
+    else
+        REPONAME=""
+    fi
     
     if [[ -n "$REPONAME" ]]; then
         log "Extracted userid: $USERID, datasetid: $DATASETID, repo: $REPONAME"
