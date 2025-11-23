@@ -87,23 +87,43 @@ extract_ids() {
     local repo_path="$1"
     local dir_name
     dir_name=$(basename "$repo_path")
-    
-    # Expected format: d_{userId}_dataset{datasetId}[_repoName][.domain]
-    local dir_pattern='^d_([[:alnum:]_-]+)_dataset([[:alnum:]_-]+)(_[[:alnum:]_-]+)?(\.[[:alnum:]._-]+)?$'
-    if [[ ! "$dir_name" =~ $dir_pattern ]]; then
+
+    # Normalize away any optional domain suffix (everything after the first dot)
+    local base_name="${dir_name%%.*}"
+
+    if [[ "$base_name" != d_*_dataset* ]]; then
         log_error "Invalid directory name format. Expected: d_{userId}_dataset{datasetId}[_repoName][.domain], got: $dir_name"
         exit 1
     fi
 
-    USERID="${BASH_REMATCH[1]}"
-    DATASETID="${BASH_REMATCH[2]}"
-    local repo_segment="${BASH_REMATCH[3]:-}"
-    if [[ -n "$repo_segment" ]]; then
-        REPONAME="${repo_segment:1}"
-    else
-        REPONAME=""
+    local prefix="${base_name%%_dataset*}"
+    if [[ "$prefix" != d_* ]]; then
+        log_error "Unable to extract user id from: $dir_name"
+        exit 1
     fi
-    
+
+    USERID="${prefix#d_}"
+    if [[ -z "$USERID" ]]; then
+        log_error "User id segment is empty in directory name: $dir_name"
+        exit 1
+    fi
+
+    local dataset_and_repo="${base_name#${prefix}_dataset}"
+    if [[ -z "$dataset_and_repo" ]]; then
+        log_error "Dataset id segment is empty in directory name: $dir_name"
+        exit 1
+    fi
+
+    local repo_segment=""
+    if [[ "$dataset_and_repo" == *_* ]]; then
+        DATASETID="${dataset_and_repo%%_*}"
+        repo_segment="${dataset_and_repo#${DATASETID}_}"
+    else
+        DATASETID="$dataset_and_repo"
+    fi
+
+    REPONAME="$repo_segment"
+
     if [[ -n "$REPONAME" ]]; then
         log "Extracted userid: $USERID, datasetid: $DATASETID, repo: $REPONAME"
     else
