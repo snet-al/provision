@@ -145,6 +145,26 @@ check_dockerfile() {
     log "Dockerfile.pf found: $dockerfile_path"
 }
 
+# Remove any .dockerignore files to avoid conflicting build context exclusions
+remove_dockerignore_files() {
+    local repo_path="$1"
+    local dockerignore_files=()
+
+    while IFS= read -r -d '' file; do
+        dockerignore_files+=("$file")
+    done < <(find "$repo_path" -type f -name ".dockerignore" -print0 2>/dev/null)
+
+    if (( ${#dockerignore_files[@]} == 0 )); then
+        log "No .dockerignore files present under $repo_path"
+        return 0
+    fi
+
+    for file in "${dockerignore_files[@]}"; do
+        log "Removing .dockerignore file: $file"
+        rm -f "$file"
+    done
+}
+
 # Extract port from Dockerfile (if specified)
 extract_port_from_dockerfile() {
     local dockerfile_path="$1"
@@ -387,6 +407,7 @@ main() {
     validate_repo_path "$repo_path"
     extract_ids "$repo_path"
     check_dockerfile "$repo_path"
+    remove_dockerignore_files "$repo_path"
     
     # Set variables with new naming convention
     local container_name="app_d${USERID}_dataset${DATASETID}"
