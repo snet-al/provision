@@ -16,21 +16,35 @@
 
         body {
             margin: 0;
+            min-height: 100vh;
             font-family: "Segoe UI", Arial, sans-serif;
             line-height: 1.5;
-            color: #111;
-            background-color: #fff;
+            color: #e3ecff;
+            background: radial-gradient(120% 120% at 0% 0%, #0c344d, #030712 65%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hero {
+            width: min(840px, 100%);
+            margin: 48px 16px;
+            padding: 56px;
+            background: #fdfdfd;
+            color: #0c192a;
+            border-radius: 18px;
+            box-shadow: 0 25px 60px rgba(1, 12, 24, 0.35);
+            border: 1px solid rgba(3, 29, 61, 0.08);
         }
 
         header {
-            max-width: 720px;
-            margin: 80px auto 24px;
-            padding: 0 24px;
+            margin-bottom: 32px;
         }
 
         h1 {
-            font-size: clamp(2rem, 4vw, 3rem);
-            margin-bottom: 0.5rem;
+            font-size: clamp(2.5rem, 5vw, 3.5rem);
+            margin-bottom: 0.75rem;
+            color: #011223;
         }
 
         p {
@@ -38,58 +52,59 @@
             margin-bottom: 0.75rem;
         }
 
-        main {
-            max-width: 720px;
-            margin: 0 auto;
-            padding: 0 24px 80px;
-        }
-
         .panel {
-            border: 1px solid #dcdcdc;
-            border-radius: 6px;
+            border: 1px solid rgba(2, 19, 44, 0.1);
+            border-radius: 14px;
             padding: 24px;
-            background: #fafafa;
-        }
-
-        .panel h2 {
-            margin-top: 0;
-            font-size: 1.15rem;
-        }
-
-        a {
-            color: #0d47a1;
-            text-decoration: none;
-        }
-
-        a:hover {
-            text-decoration: underline;
-        }
-
-        ul {
-            padding-left: 1.25rem;
-            margin: 0.5rem 0;
+            background: linear-gradient(135deg, #f2f7ff, #eef9f4);
+            color: #071631;
         }
 
         code {
             font-family: "SFMono-Regular", Consolas, Menlo, monospace;
-            background: rgba(0, 0, 0, 0.05);
+            background: rgba(6, 22, 50, 0.08);
             padding: 0.15rem 0.35rem;
             border-radius: 4px;
             font-size: 0.95rem;
         }
+
+        .cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            margin-top: 18px;
+            background: radial-gradient(circle at 20% 20%, #24f1c4, #01a7d5);
+            border-radius: 999px;
+            color: #031526;
+            font-weight: 600;
+            text-decoration: none;
+            box-shadow: 0 12px 25px rgba(1, 20, 32, 0.25);
+        }
+
+        .cta span {
+            font-size: 1.05rem;
+        }
+
+        @media (max-width: 640px) {
+            .hero {
+                padding: 36px 24px;
+            }
+        }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Welcome to Datafynow Deployments</h1>
-        <p>Your gateway is online. Generate a new <code>Dockerfile</code> in your repo to kick off the first deployment.</p>
-    </header>
+    <div class="hero">
+        <header>
+            <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 0.75rem; color: #0aa3d8; font-weight: 600;">Datafynow Deploy</p>
+            <h1>Welcome to Datafynow Deployments</h1>
+            <p>Your gateway is online. Generate a new <code>Dockerfile</code> in your repo to kick off the first deployment and watch your workspace go live.</p>
+        </header>
 
-    <main>
         <section class="panel">
             <p>Ready when you are—create a fresh Dockerfile for your app to set the deployment in motion. Once it’s built, your new environment will be up and running.</p>
             <p>If you need a hand, just reach out to the platform team.</p>
         </section>
-    </main>
+    </div>
 </body>
 </html>
