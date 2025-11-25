@@ -11,7 +11,9 @@ readonly LOG_FILE="/home/forge/deployment/logs/deployment.log"
 readonly NETWORK_NAME="deployment-network"
 readonly NGINX_CONTAINER_NAME="deployment-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/deployment/nginx-configs"
+readonly NGINX_HTML_DIR="$NGINX_CONFIG_DIR/html"
 readonly DEPLOYMENTS_DIR="/home/forge/deployments"
+readonly BASE_NGINX_HTML_FILE="$SCRIPT_DIR/index.html"
 readonly DOMAIN_SUFFIX="datafynow.ai"
 
 # Ensure log file is accessible
@@ -91,12 +93,35 @@ create_nginx_dirs() {
 
     mkdir -p "$NGINX_CONFIG_DIR/sites-available"
     mkdir -p "$NGINX_CONFIG_DIR/sites-enabled"
+    mkdir -p "$NGINX_HTML_DIR"
     # If running with sudo, ensure ownership is set to forge
     if [[ $EUID -eq 0 ]]; then
         chown -R forge:forge "$NGINX_CONFIG_DIR" || true
     fi
 
     log "Nginx configuration directories created"
+}
+
+create_default_site_content() {
+    log "Syncing static site content from repository..."
+
+    if [[ ! -f "$BASE_NGINX_HTML_FILE" ]]; then
+        log_error "Base index file not found at $BASE_NGINX_HTML_FILE"
+        exit 1
+    fi
+
+    mkdir -p "$NGINX_HTML_DIR"
+    local index_file="$NGINX_HTML_DIR/index.html"
+
+    # Copy repo-managed landing page so nginx serves the same content
+    cp "$BASE_NGINX_HTML_FILE" "$index_file"
+    chmod 644 "$index_file"
+
+    if [[ $EUID -eq 0 ]]; then
+        chown -R forge:forge "$NGINX_HTML_DIR" || true
+    fi
+
+    log "Static site content updated from repository"
 }
 
 # Create nginx main config
@@ -138,7 +163,18 @@ http {
         '' close;
     }
 
-    include /etc/nginx/conf.d/*.conf;
+    server {
+        listen 80 default_server;
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+
     include /etc/nginx/sites-enabled/*.conf;
 }
 EOF
@@ -171,6 +207,7 @@ setup_nginx_container() {
         -p 443:443 \
         -v "$NGINX_CONFIG_DIR/sites-enabled:/etc/nginx/sites-enabled:ro" \
         -v "$NGINX_CONFIG_DIR/nginx.conf:/etc/nginx/nginx.conf:ro" \
+        -v "$NGINX_HTML_DIR:/usr/share/nginx/html:ro" \
         -v /var/log/nginx:/var/log/nginx \
         nginx:latest; then
         log "Nginx container started successfully"
@@ -215,6 +252,7 @@ main() {
     check_prerequisites
     create_network
     create_nginx_dirs
+    create_default_site_content
     create_nginx_main_config
     setup_nginx_container
     create_deployments_dir
