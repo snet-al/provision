@@ -12,7 +12,7 @@ readonly NETWORK_NAME="agents-network"
 readonly NGINX_CONTAINER_NAME="agents-nginx"
 readonly NGINX_CONFIG_DIR="/home/forge/agents/nginx-configs"
 readonly AGENTS_DIR="/home/forge/agents/"
-readonly DOMAIN_SUFFIX="datafynow.ai"
+readonly DOMAIN="agents.datafynow.ai"
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -99,56 +99,6 @@ create_nginx_dirs() {
     log "Nginx configuration directories created"
 }
 
-# Create nginx main config
-create_nginx_main_config() {
-    log "Creating nginx main configuration..."
-
-    local nginx_conf="$NGINX_CONFIG_DIR/nginx.conf"
-    
-    tee "$nginx_conf" > /dev/null <<'EOF'
-user nginx;
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    server_names_hash_bucket_size 128;
-
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-
-    access_log /var/log/nginx/access.log main;
-
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-
-    # WebSocket upgrade map
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        '' close;
-    }
-
-    include /etc/nginx/conf.d/*.conf;
-    include /etc/nginx/sites-enabled/*.conf;
-}
-EOF
-
-    # If running with sudo, ensure ownership is set to forge
-    if [[ $EUID -eq 0 ]]; then
-        chown forge:forge "$nginx_conf" || true
-    fi
-    log "Nginx main configuration created"
-}
 
 # Setup nginx container
 setup_nginx_container() {
