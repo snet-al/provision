@@ -199,6 +199,7 @@ watch_for_file_content_changes() {
     log "Watching for file changes in $DEPLOYMENTS_DIR..."
 
     inotifywait -m -r "$DEPLOYMENTS_DIR" \
+        --exclude '(^|/)(node_modules|\.git|dist|build|logs|storage|tmp)(/|$)' \
         -e modify -e close_write -e moved_to -e moved_from -e create -e delete \
         --format '%w%f' \
         -q 2>/dev/null | while read -r changed_path; do
@@ -209,6 +210,24 @@ watch_for_file_content_changes() {
 
         local relative_path="${changed_path#$DEPLOYMENTS_DIR/}"
         if [[ "$relative_path" == "$changed_path" ]] || [[ -z "$relative_path" ]]; then
+            continue
+        fi
+
+        # Extra safety: skip any path in ignored dirs
+        if [[ "$relative_path" == node_modules/* ]] || \
+           [[ "$relative_path" == .git/* ]] || \
+           [[ "$relative_path" == dist/* ]] || \
+           [[ "$relative_path" == build/* ]] || \
+           [[ "$relative_path" == logs/* ]] || \
+           [[ "$relative_path" == storage/* ]] || \
+           [[ "$relative_path" == tmp/* ]] || \
+           [[ "$relative_path" == */node_modules/* ]] || \
+           [[ "$relative_path" == */.git/* ]] || \
+           [[ "$relative_path" == */dist/* ]] || \
+           [[ "$relative_path" == */build/* ]] || \
+           [[ "$relative_path" == */logs/* ]] || \
+           [[ "$relative_path" == */storage/* ]] || \
+           [[ "$relative_path" == */tmp/* ]]; then
             continue
         fi
 
