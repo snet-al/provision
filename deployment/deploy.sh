@@ -258,6 +258,7 @@ run_container() {
     if docker run -d \
         --name "$container_name" \
         --network "$NETWORK_NAME" \
+        --ulimit nofile=65535:65535 \
         --restart unless-stopped \
         -v "$code_dir":/app \
         -v "nm_${container_name}:/app/node_modules" \

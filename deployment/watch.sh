@@ -199,7 +199,7 @@ watch_for_file_content_changes() {
     log "Watching for file changes in $DEPLOYMENTS_DIR..."
 
     inotifywait -m -r "$DEPLOYMENTS_DIR" \
-        --exclude '(^|/)(node_modules|\.git|dist|build|logs|storage|tmp)(/|$)' \
+        --exclude '(^|/)(node_modules|\.git|dist|build|logs|storage|tmp|coverage|\.angular|target|\.gradle|gradle|out)(/|$)' \
         -e modify -e close_write -e moved_to -e moved_from -e create -e delete \
         --format '%w%f' \
         -q 2>/dev/null | while read -r changed_path; do
@@ -214,20 +214,34 @@ watch_for_file_content_changes() {
         fi
 
         # Extra safety: skip any path in ignored dirs
-        if [[ "$relative_path" == node_modules/* ]] || \
+        if [[ "$relative_path" == node_modules ]] || \
+           [[ "$relative_path" == */node_modules ]] || \
+           [[ "$relative_path" == node_modules/* ]] || \
            [[ "$relative_path" == .git/* ]] || \
            [[ "$relative_path" == dist/* ]] || \
            [[ "$relative_path" == build/* ]] || \
            [[ "$relative_path" == logs/* ]] || \
            [[ "$relative_path" == storage/* ]] || \
            [[ "$relative_path" == tmp/* ]] || \
+           [[ "$relative_path" == coverage/* ]] || \
+           [[ "$relative_path" == .angular/* ]] || \
+           [[ "$relative_path" == target/* ]] || \
+           [[ "$relative_path" == .gradle/* ]] || \
+           [[ "$relative_path" == gradle/* ]] || \
+           [[ "$relative_path" == out/* ]] || \
            [[ "$relative_path" == */node_modules/* ]] || \
            [[ "$relative_path" == */.git/* ]] || \
            [[ "$relative_path" == */dist/* ]] || \
            [[ "$relative_path" == */build/* ]] || \
            [[ "$relative_path" == */logs/* ]] || \
            [[ "$relative_path" == */storage/* ]] || \
-           [[ "$relative_path" == */tmp/* ]]; then
+           [[ "$relative_path" == */tmp/* ]] || \
+           [[ "$relative_path" == */coverage/* ]] || \
+           [[ "$relative_path" == */.angular/* ]] || \
+           [[ "$relative_path" == */target/* ]] || \
+           [[ "$relative_path" == */.gradle/* ]] || \
+           [[ "$relative_path" == */gradle/* ]] || \
+           [[ "$relative_path" == */out/* ]]; then
             continue
         fi
 
