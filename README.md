@@ -5,13 +5,18 @@ A comprehensive collection of shell scripts for provisioning and securing Ubuntu
 ## 🚀 Quick Start
 
 ```bash
-# 1. Validate configuration and system readiness
+# 1. Validate configuration (recommended)
 ./validate-config.sh
 
 # 2. (Optional) Run comprehensive tests
 ./test-provision.sh
 
-# 3. Run the main setup script
+# 3. Run the main setup (interactive)
+#    - Installs basic utils
+#    - Configures daily unattended-upgrades (3:00 AM cron)
+#    - Shows forge user's SSH key (use it to grant access to the private repo)
+#    - Clones git@github.com:datafynow/provision.git as forge (retries until success)
+#    - Adds your SSH key to forge for passwordless login
 sudo ./setup.sh
 
 # 4. Validate the provisioned system
@@ -30,7 +35,7 @@ sudo ./setup.sh
 ### Core Provisioning Scripts
 | Script | Purpose | User Required |
 |--------|---------|---------------|
-| `setup.sh` | Main orchestration script | root/sudo |
+| `setup.sh` | Main orchestration script with interactive flow | root/sudo |
 | `create_user.sh` | Creates forge user with sudo access | root/sudo |
 | `add_ssh_key.sh` | Adds SSH keys to user accounts | target user |
 | `sshkeys.sh` | Interactive SSH key management | target user |
@@ -52,6 +57,17 @@ sudo ./setup.sh
 |------|---------|----------|
 | `provision.conf` | Default configuration settings | Yes |
 | `provision.local.conf` | Local configuration overrides | Optional |
+
+## 🧭 Provisioning Flow (interactive)
+
+1) Install basics: updates apt, adds universe, installs core utilities.  
+2) Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.  
+3) Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:datafynow/provision.git`.  
+4) Server type: prompts for desired server type and records it for the private repo.  
+5) Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.  
+6) Optional security: prompts for hardening and rate limiting.  
+7) Forge access: adds your SSH public key to `forge` for passwordless login.  
+8) Post-copy: scripts are copied to `/home/forge/provision` with proper perms.  
 
 ## 🔒 Security Features
 
