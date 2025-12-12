@@ -252,17 +252,16 @@ EOF
 
 choose_server_type() {
     log "Select the server type to provision:"
-    echo "1) Multi-deployment server"
-    echo "2) Agents server"
-    echo "3) Docker + nginx (all apps in Docker)"
-
+    echo "1) Basic server"
+    echo "2) Multi-deployment server"
+    echo "3) Agents server"
     local choice
     while true; do
         read -p "Enter choice [1-3]: " choice
         case "$choice" in
-            1) echo "multi_deployment"; return 0 ;;
-            2) echo "agents"; return 0 ;;
-            3) echo "docker_nginx"; return 0 ;;
+            1) echo "basic"; return 0 ;;
+            2) echo "multi_deployment"; return 0 ;;
+            3) echo "agents"; return 0 ;;
             *) echo "Invalid choice. Please enter 1, 2, or 3." ;;
         esac
     done
@@ -324,7 +323,23 @@ apply_rate_limiting() {
     fi
 }
 
-# Docker installation
+install_docker() {
+    log "Ensuring Docker is installed (default)..."
+    local docker_script="$SCRIPT_DIR/docker.sh"
+
+    if [[ ! -x "$docker_script" ]]; then
+        log_error "Docker installation script not found or not executable at $docker_script"
+        exit 1
+    fi
+
+    if ! "$docker_script"; then
+        log_error "Docker installation script failed"
+        exit 1
+    fi
+
+    log "Docker installation completed."
+}
+
 create_forge_user() {
     log "Ensuring user '$DEFAULT_USER' exists..."
     if id -u "$DEFAULT_USER" >/dev/null 2>&1; then
@@ -453,11 +468,17 @@ install_basic_utilities
 configure_updates_cron
 
 create_forge_user
-ensure_forge_repo_key
+install_docker
 selected_type=$(choose_server_type)
-clone_provision_repo
-record_server_type "$selected_type"
-run_private_repo_setup "$selected_type"
+
+if [[ "$selected_type" == "basic" ]]; then
+    log "Basic server selected; skipping private provision repository setup."
+else
+    ensure_forge_repo_key
+    clone_provision_repo
+    record_server_type "$selected_type"
+    run_private_repo_setup "$selected_type"
+fi
 
 apply_security_hardening
 apply_rate_limiting
