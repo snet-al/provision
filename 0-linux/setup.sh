@@ -9,7 +9,7 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
-readonly DOCKER_DIR="$ROOT_DIR/2-docker-portainer"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 readonly LOG_FILE="/var/log/provision.log"
 readonly DEFAULT_USER="forge"
 readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
@@ -378,10 +378,14 @@ ensure_forge_repo_key() {
     fi
 
     # Ensure known_hosts has github.com to avoid prompts
+    local known_hosts="$ssh_dir/known_hosts"
     if ! sudo -u "$DEFAULT_USER" ssh-keygen -F github.com >/dev/null; then
-        sudo -u "$DEFAULT_USER" ssh-keyscan github.com >> "$ssh_dir/known_hosts" 2>/dev/null || true
+        sudo -u "$DEFAULT_USER" touch "$known_hosts"
+        if ! sudo -u "$DEFAULT_USER" sh -c "ssh-keyscan github.com >> '$known_hosts' 2>/dev/null"; then
+            log_warning "Failed to add github.com to known_hosts for $DEFAULT_USER"
+        fi
     fi
-    sudo chmod 644 "$ssh_dir/known_hosts" || true
+    sudo chmod 644 "$known_hosts" || true
 
     log "Forge user SSH public key (add to git@github.com:datafynow/provision.git access):"
     echo "--------------------------------------------"

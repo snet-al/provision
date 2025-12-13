@@ -16,7 +16,7 @@ log_error() {
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-readonly DOCKER_PROXY_SCRIPT="$ROOT_DIR/2-docker-portainer/configure-docker-proxy.sh"
+readonly DOCKER_PROXY_SCRIPT="$ROOT_DIR/2-docker/configure-docker-proxy.sh"
 
 # Check if running as root or with sudo
 if [[ $EUID -ne 0 ]]; then
@@ -43,7 +43,7 @@ if ! sudo -u forge mkdir -p "$SCRIPTS_DIR"; then
 fi
 
 # Synchronize key script directories so forge has the same structure
-declare -a SCRIPT_SUBDIRS=("0-linux" "1-security" "2-docker-portainer" "deployment")
+declare -a SCRIPT_SUBDIRS=("0-linux" "1-security" "2-docker" "deployment")
 for subdir in "${SCRIPT_SUBDIRS[@]}"; do
     local_source="$ROOT_DIR/$subdir"
     if [[ -d "$local_source" ]]; then

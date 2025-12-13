@@ -36,7 +36,7 @@ sudo ./0-linux/setup.sh
 
 - `0-linux/`: Core provisioning flow, validation scripts, and shared configuration (`provision.conf`, `setup.sh`, `validate-*`, etc.).
 - `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
-- `2-docker-portainer/`: Docker installation helpers and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
+- `2-docker/`: Docker installation helpers, Portainer deployment, and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
 - `deployment/`: Docker/nginx-based deployment pipeline (left unchanged by this reorg).
 - Repository root: Documentation plus helper assets (e.g., this `README.md`).
 
@@ -50,8 +50,8 @@ sudo ./0-linux/setup.sh
 | `after-setup.sh` | `0-linux/` | Post-setup cleanup and file organization | root/sudo |
 | `security.sh` | `1-security/` | Security hardening (firewall, fail2ban, etc.) | root/sudo |
 | `security_ratelimit.sh` | `1-security/` | Additional security measures | root/sudo |
-| `docker.sh` | `2-docker-portainer/` | Docker installation and configuration | root/sudo |
-| `configure-docker-proxy.sh` | `2-docker-portainer/` | Optional Docker proxy settings | root/sudo |
+| `docker.sh` | `2-docker/` | Installs Docker CE, Compose, and Portainer CE dashboard | root/sudo |
+| `configure-docker-proxy.sh` | `2-docker/` | Optional Docker proxy settings | root/sudo |
 
 ### Validation & Testing Scripts
 | Script | Purpose | When to Use |
@@ -66,6 +66,12 @@ sudo ./0-linux/setup.sh
 |------|---------|----------|
 | `0-linux/provision.conf` | Default configuration settings | Yes |
 | `0-linux/provision.local.conf` | Local configuration overrides | Optional |
+
+## 🐳 Docker & Portainer Dashboard
+
+- Running `sudo ./2-docker/docker.sh` installs Docker CE, Docker Compose, and automatically deploys **Portainer CE** for container management.
+- Portainer runs as container `portainer`, stores data inside the `portainer_data` volume, and exposes ports `8000` (edge agent) and `9443` (HTTPS UI).
+- After installation, browse to `https://<server-ip>:9443`, create the Portainer admin user, and connect to the local Docker instance (already mounted via `/var/run/docker.sock`).
 
 ## 🧭 Provisioning Flow (interactive)
 

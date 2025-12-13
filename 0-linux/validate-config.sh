@@ -11,7 +11,7 @@ readonly LOCAL_CONFIG="provision.local.conf"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
-readonly DOCKER_DIR="$ROOT_DIR/2-docker-portainer"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 
 # Colors for output
 readonly RED='\033[0;31m'

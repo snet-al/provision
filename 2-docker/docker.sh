@@ -9,6 +9,11 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 readonly LOG_FILE="/var/log/provision.log"
 readonly DOCKER_GPG_URL="https://download.docker.com/linux/ubuntu/gpg"
 readonly DOCKER_GPG_KEY="/etc/apt/keyrings/docker.asc"
+readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
+readonly PORTAINER_CONTAINER_NAME="portainer"
+readonly PORTAINER_VOLUME_NAME="portainer_data"
+readonly PORTAINER_HTTP_PORT="8000"
+readonly PORTAINER_HTTPS_PORT="9443"
 
 # Ensure log file is accessible
 ensure_log_file() {
@@ -27,6 +32,11 @@ log() {
 log_error() {
     ensure_log_file
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER ERROR: $1" >&2
+}
+
+log_warning() {
+    ensure_log_file
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER WARNING: $1"
 }
 
 # Check prerequisites
@@ -263,6 +273,54 @@ verify_installation() {
     log "Docker installation verification completed"
 }
 
+# Install / update Portainer
+install_portainer() {
+    log "Setting up Portainer CE dashboard..."
+
+    # Ensure data volume exists
+    if sudo docker volume ls --format '{{.Name}}' | grep -Fx "$PORTAINER_VOLUME_NAME" &>/dev/null; then
+        log "Portainer data volume already exists ($PORTAINER_VOLUME_NAME)"
+    else
+        log "Creating Portainer data volume ($PORTAINER_VOLUME_NAME)..."
+        if ! sudo docker volume create "$PORTAINER_VOLUME_NAME" >/dev/null; then
+            log_error "Failed to create Portainer volume"
+            exit 1
+        fi
+    fi
+
+    # Pull latest Portainer image (tolerate failure but warn)
+    if ! sudo docker pull "$PORTAINER_IMAGE"; then
+        log_error "Failed to pull $PORTAINER_IMAGE"
+        exit 1
+    fi
+
+    # If container exists, ensure it's running and updated
+    if sudo docker ps -a --format '{{.Names}}' | grep -Fx "$PORTAINER_CONTAINER_NAME" &>/dev/null; then
+        log "Portainer container already exists"
+        log "Updating Portainer container to latest image..."
+        if ! sudo docker stop "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1; then
+            log_warning "Could not stop existing Portainer container (it may already be stopped)"
+        fi
+        sudo docker rm "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
+
+    log "Creating Portainer container..."
+    if ! sudo docker run -d \
+        --name "$PORTAINER_CONTAINER_NAME" \
+        --restart unless-stopped \
+        -p "${PORTAINER_HTTP_PORT}:8000" \
+        -p "${PORTAINER_HTTPS_PORT}:9443" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v "${PORTAINER_VOLUME_NAME}":/data \
+        "$PORTAINER_IMAGE" >/dev/null; then
+        log_error "Failed to start Portainer container"
+        exit 1
+    fi
+
+    log "Portainer is running (HTTPS port ${PORTAINER_HTTPS_PORT}, HTTP port ${PORTAINER_HTTP_PORT})."
+    log "Access it via https://<server-ip>:${PORTAINER_HTTPS_PORT} after setting up the admin user."
+}
+
 # Main installation process
 main() {
     log "Starting Docker installation process..."
@@ -275,6 +333,7 @@ main() {
     configure_docker_access
     start_docker_service
     verify_installation
+    install_portainer
 
     log "Docker installation completed successfully"
 
@@ -284,10 +343,13 @@ main() {
     echo "🔧 Docker Compose version: $(sudo docker compose version)"
     echo "👤 User 'forge' has been added to the docker group"
     echo
+    echo "🛳  Portainer CE has been deployed on ports ${PORTAINER_HTTP_PORT} (HTTP) / ${PORTAINER_HTTPS_PORT} (HTTPS)"
+    echo
     echo "📋 Next steps:"
-    echo "   1. Log out and log back in for group changes to take effect"
-    echo "   2. Test Docker access: docker run hello-world"
-    echo "   3. Check Docker status: systemctl status docker"
+    echo "   1. Visit https://<server-ip>:${PORTAINER_HTTPS_PORT} to finish Portainer setup"
+    echo "   2. Log out and back in for docker group membership to take effect"
+    echo "   3. Test Docker access: docker run hello-world"
+    echo "   4. Check Docker status: systemctl status docker"
     echo
     echo "⚠️  Important: You must log out and log back in before using Docker without sudo!"
 }
