@@ -5,17 +5,8 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Configuration
-readonly LOG_FILE="/var/log/provision.log"
-
-# Logging functions
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" | tee -a "$LOG_FILE" >&2
-}
+# Source shared utilities
+source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
 
 # Validate username
 validate_username() {

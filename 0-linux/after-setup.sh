@@ -5,14 +5,8 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Logging function
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/provision.log
-}
-
-log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" | tee -a /var/log/provision.log >&2
-}
+# Source shared utilities
+source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
