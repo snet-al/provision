@@ -14,6 +14,10 @@ log_error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" | tee -a /var/log/provision.log >&2
 }
 
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly DOCKER_PROXY_SCRIPT="$ROOT_DIR/2-docker-portainer/configure-docker-proxy.sh"
+
 # Check if running as root or with sudo
 if [[ $EUID -ne 0 ]]; then
     log_error "This script must be run as root or with sudo"
@@ -31,28 +35,37 @@ log "Starting post-setup file organization..."
 # Copy all provisioning scripts to forge user's home
 log "Copying provisioning scripts to forge user's home directory..."
 SCRIPTS_DIR="/home/forge/provision"
-CURRENT_DIR="$(pwd)"
 
-# Check if we're already in the target directory
-if [[ "$CURRENT_DIR" == "$SCRIPTS_DIR" ]]; then
-    log "Scripts are already in the target directory. Skipping copy operation."
-else
-    # Create directory with proper error handling
-    if ! sudo -u forge mkdir -p "$SCRIPTS_DIR"; then
-        log_error "Failed to create scripts directory: $SCRIPTS_DIR"
-        exit 1
+# Create directory with proper error handling
+if ! sudo -u forge mkdir -p "$SCRIPTS_DIR"; then
+    log_error "Failed to create scripts directory: $SCRIPTS_DIR"
+    exit 1
+fi
+
+# Synchronize key script directories so forge has the same structure
+declare -a SCRIPT_SUBDIRS=("0-linux" "1-security" "2-docker-portainer" "deployment")
+for subdir in "${SCRIPT_SUBDIRS[@]}"; do
+    local_source="$ROOT_DIR/$subdir"
+    if [[ -d "$local_source" ]]; then
+        log "Syncing $subdir to forge's provision directory..."
+        if ! sudo rsync -a "$local_source/" "$SCRIPTS_DIR/$subdir/"; then
+            log_error "Failed to sync $subdir to $SCRIPTS_DIR"
+            exit 1
+        fi
     fi
+done
 
-    # Copy shell scripts
-    if ! sudo cp ./*.sh "$SCRIPTS_DIR/"; then
-        log_error "Failed to copy shell scripts to $SCRIPTS_DIR"
+# Copy root-level shell scripts (if any remain) for completeness
+if compgen -G "$ROOT_DIR/*.sh" > /dev/null; then
+    if ! sudo cp "$ROOT_DIR"/*.sh "$SCRIPTS_DIR/"; then
+        log_error "Failed to copy root-level shell scripts to $SCRIPTS_DIR"
         exit 1
     fi
 fi
 
 # Copy README (optional, don't fail if missing)
-if [[ -f "README.md" ]]; then
-    if sudo cp README.md "$SCRIPTS_DIR/"; then
+if [[ -f "$ROOT_DIR/README.md" ]]; then
+    if sudo cp "$ROOT_DIR/README.md" "$SCRIPTS_DIR/"; then
         log "README.md copied successfully"
     else
         log "Warning: Failed to copy README.md (non-critical)"
@@ -77,28 +90,28 @@ log "Provisioning scripts copied to $SCRIPTS_DIR"
 
 # Check if user wants to configure Docker proxy
 log "Checking for Docker proxy configuration..."
-if [[ -f "configure-docker-proxy.sh" ]]; then
+if [[ -f "$DOCKER_PROXY_SCRIPT" ]]; then
     read -p "Do you want to configure Docker proxy settings? (y/n): " configure_proxy
     if [[ "$configure_proxy" = "y" ]]; then
         log "Running Docker proxy configuration..."
         
         # Make sure the script is executable
-        if [[ ! -x "configure-docker-proxy.sh" ]]; then
-            chmod +x "configure-docker-proxy.sh"
+        if [[ ! -x "$DOCKER_PROXY_SCRIPT" ]]; then
+            chmod +x "$DOCKER_PROXY_SCRIPT"
         fi
         
         # Run the Docker proxy configuration script
-        if ./configure-docker-proxy.sh; then
+        if "$DOCKER_PROXY_SCRIPT"; then
             log "Docker proxy configuration completed successfully"
         else
             log_error "Docker proxy configuration failed"
-            log_error "You can run it manually later: ./configure-docker-proxy.sh"
+            log_error "You can run it manually later: $DOCKER_PROXY_SCRIPT"
         fi
     else
         log "Docker proxy configuration skipped by user choice"
     fi
 else
-    log "Docker proxy configuration script not found (configure-docker-proxy.sh)"
+    log "Docker proxy configuration script not found at $DOCKER_PROXY_SCRIPT"
 fi
 
 log "Post-setup file organization completed successfully"

@@ -6,10 +6,10 @@ A comprehensive collection of shell scripts for provisioning and securing Ubuntu
 
 ```bash
 # 1. Validate configuration (recommended)
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # 2. (Optional) Run comprehensive tests
-./test-provision.sh
+./0-linux/test-provision.sh
 
 # 3. Run the main setup (interactive)
 #    - Installs basic utils
@@ -17,10 +17,10 @@ A comprehensive collection of shell scripts for provisioning and securing Ubuntu
 #    - Shows forge user's SSH key (use it to grant access to the private repo)
 #    - Clones git@github.com:datafynow/provision.git as forge (retries until success)
 #    - Adds your SSH key to forge for passwordless login
-sudo ./setup.sh
+sudo ./0-linux/setup.sh
 
 # 4. Validate the provisioned system
-./validate-system.sh
+./0-linux/validate-system.sh
 ```
 
 ## 📋 Prerequisites
@@ -32,31 +32,40 @@ sudo ./setup.sh
 
 ## 📁 Script Overview
 
+### Directory Layout
+
+- `0-linux/`: Core provisioning flow, validation scripts, and shared configuration (`provision.conf`, `setup.sh`, `validate-*`, etc.).
+- `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
+- `2-docker-portainer/`: Docker installation helpers and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
+- `deployment/`: Docker/nginx-based deployment pipeline (left unchanged by this reorg).
+- Repository root: Documentation plus helper assets (e.g., this `README.md`).
+
 ### Core Provisioning Scripts
-| Script | Purpose | User Required |
-|--------|---------|---------------|
-| `setup.sh` | Main orchestration script with interactive flow | root/sudo |
-| `create_user.sh` | Creates forge user with sudo access | root/sudo |
-| `add_ssh_key.sh` | Adds SSH keys to user accounts | target user |
-| `sshkeys.sh` | Interactive SSH key management | target user |
-| `security.sh` | Security hardening (firewall, fail2ban, etc.) | root/sudo |
-| `security_ratelimit.sh` | Additional security measures | root/sudo |
-| `docker.sh` | Docker installation and configuration | root/sudo |
-| `after-setup.sh` | Post-setup cleanup and file organization | root/sudo |
+| Script | Location | Purpose | User Required |
+|--------|----------|---------|---------------|
+| `setup.sh` | `0-linux/` | Main orchestration script with interactive flow | root/sudo |
+| `create_user.sh` | `0-linux/` | Creates forge user with sudo access | root/sudo |
+| `add_ssh_key.sh` | `0-linux/` | Adds SSH keys to user accounts | target user |
+| `sshkeys.sh` | `0-linux/` | Interactive SSH key management | target user |
+| `after-setup.sh` | `0-linux/` | Post-setup cleanup and file organization | root/sudo |
+| `security.sh` | `1-security/` | Security hardening (firewall, fail2ban, etc.) | root/sudo |
+| `security_ratelimit.sh` | `1-security/` | Additional security measures | root/sudo |
+| `docker.sh` | `2-docker-portainer/` | Docker installation and configuration | root/sudo |
+| `configure-docker-proxy.sh` | `2-docker-portainer/` | Optional Docker proxy settings | root/sudo |
 
 ### Validation & Testing Scripts
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `validate-config.sh` | Pre-provisioning validation | Before running setup |
-| `test-provision.sh` | Comprehensive testing suite | Before deployment |
-| `validate-system.sh` | Post-provisioning validation | After provisioning |
+| `0-linux/validate-config.sh` | Pre-provisioning validation | Before running setup |
+| `0-linux/test-provision.sh` | Comprehensive testing suite | Before deployment |
+| `0-linux/validate-system.sh` | Post-provisioning validation | After provisioning |
 
 
 ### Configuration Files
 | File | Purpose | Required |
 |------|---------|----------|
-| `provision.conf` | Default configuration settings | Yes |
-| `provision.local.conf` | Local configuration overrides | Optional |
+| `0-linux/provision.conf` | Default configuration settings | Yes |
+| `0-linux/provision.local.conf` | Local configuration overrides | Optional |
 
 ## 🧭 Provisioning Flow (interactive)
 
@@ -116,7 +125,7 @@ The provisioning scripts use a centralized configuration system:
 Always validate your configuration before provisioning:
 ```bash
 # Validate configuration
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # This checks:
 # - Configuration file syntax
@@ -134,13 +143,13 @@ First, try the automated validation tools:
 
 ```bash
 # Check if configuration is valid
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # Run comprehensive tests
-./test-provision.sh
+./0-linux/test-provision.sh
 
 # Check if system is properly configured
-./validate-system.sh
+./0-linux/validate-system.sh
 ```
 
 These scripts will identify most common issues automatically.
@@ -158,13 +167,13 @@ These scripts will identify most common issues automatically.
 ### Regular Validation
 ```bash
 # Run system validation regularly (weekly/monthly)
-./validate-system.sh
+./0-linux/validate-system.sh
 
 # Check for configuration drift
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # Run comprehensive tests before major changes
-./test-provision.sh
+./0-linux/test-provision.sh
 ```
 
 ### Regular Tasks

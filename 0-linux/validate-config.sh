@@ -9,6 +9,9 @@ set -euo pipefail
 readonly DEFAULT_CONFIG="provision.conf"
 readonly LOCAL_CONFIG="provision.local.conf"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly SECURITY_DIR="$ROOT_DIR/1-security"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker-portainer"
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -167,25 +170,26 @@ validate_scripts() {
     log_info "Validating script files..."
     
     local required_scripts=(
-        "setup.sh"
-        "create_user.sh"
-        "add_ssh_key.sh"
-        "sshkeys.sh"
-        "security.sh"
-        "security_ratelimit.sh"
-        "docker.sh"
-        "after-setup.sh"
+        "$SCRIPT_DIR/setup.sh"
+        "$SCRIPT_DIR/create_user.sh"
+        "$SCRIPT_DIR/add_ssh_key.sh"
+        "$SCRIPT_DIR/sshkeys.sh"
+        "$SCRIPT_DIR/after-setup.sh"
+        "$SECURITY_DIR/security.sh"
+        "$SECURITY_DIR/security_ratelimit.sh"
+        "$DOCKER_DIR/docker.sh"
     )
     
-    for script in "${required_scripts[@]}"; do
-        if [[ -f "$SCRIPT_DIR/$script" ]]; then
-            if [[ -x "$SCRIPT_DIR/$script" ]]; then
-                log_success "Script: $script (exists and executable)"
+    for script_path in "${required_scripts[@]}"; do
+        local display_path="${script_path#$ROOT_DIR/}"
+        if [[ -f "$script_path" ]]; then
+            if [[ -x "$script_path" ]]; then
+                log_success "Script: ${display_path:-$script_path} (exists and executable)"
             else
-                log_warning "Script: $script (exists but not executable)"
+                log_warning "Script: ${display_path:-$script_path} (exists but not executable)"
             fi
         else
-            log_error "Script: $script (missing)"
+            log_error "Script: ${display_path:-$script_path} (missing)"
         fi
     done
 }

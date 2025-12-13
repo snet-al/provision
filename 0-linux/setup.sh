@@ -7,9 +7,12 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
 # Configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly SECURITY_DIR="$ROOT_DIR/1-security"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker-portainer"
 readonly LOG_FILE="/var/log/provision.log"
 readonly DEFAULT_USER="forge"
-readonly PRIVATE_REPO_DIR="$SCRIPT_DIR/provision-private"
+readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
 
 # Logging functions
 log() {
@@ -148,19 +151,18 @@ ensure_script_permissions() {
     log "Ensuring all scripts have execute permissions..."
     
     local scripts=(
-        "create_user.sh"
-        "add_ssh_key.sh"
-        "security.sh"
-        "security_ratelimit.sh"
-        "docker.sh"
-        "after-setup.sh"
+        "$SCRIPT_DIR/create_user.sh"
+        "$SCRIPT_DIR/add_ssh_key.sh"
+        "$SECURITY_DIR/security.sh"
+        "$SECURITY_DIR/security_ratelimit.sh"
+        "$DOCKER_DIR/docker.sh"
+        "$SCRIPT_DIR/after-setup.sh"
     )
     
-    for script in "${scripts[@]}"; do
-        local script_path="$SCRIPT_DIR/$script"
+    for script_path in "${scripts[@]}"; do
         if [[ -f "$script_path" ]]; then
             if [[ ! -x "$script_path" ]]; then
-                log "Making $script executable..."
+                log "Making $(basename "$script_path") executable..."
                 chmod +x "$script_path"
             fi
         else
@@ -297,7 +299,7 @@ apply_security_hardening() {
     read -p "Do you want to apply security hardening? (y/n): " security_hardening
     if [[ "$security_hardening" = "y" ]]; then
         log "Applying security hardening..."
-        if ! "$SCRIPT_DIR/security.sh"; then
+        if ! "$SECURITY_DIR/security.sh"; then
             log_error "Security hardening failed"
             exit 1
         fi
@@ -313,7 +315,7 @@ apply_rate_limiting() {
     read -p "Do you want to apply rate limiting and service binding security? (y/n): " rate_limiting
     if [[ "$rate_limiting" = "y" ]]; then
         log "Applying rate limiting and service binding security..."
-        if ! "$SCRIPT_DIR/security_ratelimit.sh"; then
+        if ! "$SECURITY_DIR/security_ratelimit.sh"; then
             log_error "Rate limiting configuration failed"
             exit 1
         fi
@@ -325,7 +327,7 @@ apply_rate_limiting() {
 
 install_docker() {
     log "Ensuring Docker is installed (default)..."
-    local docker_script="$SCRIPT_DIR/docker.sh"
+    local docker_script="$DOCKER_DIR/docker.sh"
 
     if [[ ! -x "$docker_script" ]]; then
         log_error "Docker installation script not found or not executable at $docker_script"
