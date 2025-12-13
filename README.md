@@ -5,17 +5,22 @@ A comprehensive collection of shell scripts for provisioning and securing Ubuntu
 ## 🚀 Quick Start
 
 ```bash
-# 1. Validate configuration and system readiness
-./validate-config.sh
+# 1. Validate configuration (recommended)
+./0-linux/validate-config.sh
 
 # 2. (Optional) Run comprehensive tests
-./test-provision.sh
+./0-linux/test-provision.sh
 
-# 3. Run the main setup script
+# 3. Run the main setup (interactive)
+#    - Installs basic utils
+#    - Configures daily unattended-upgrades (3:00 AM cron)
+#    - Shows forge user's SSH key (use it to grant access to the private repo)
+#    - Clones git@github.com:datafynow/provision.git as forge (retries until success)
+#    - Adds your SSH key to forge for passwordless login
 sudo ./setup.sh
 
 # 4. Validate the provisioned system
-./validate-system.sh
+./0-linux/validate-system.sh
 ```
 
 ## 📋 Prerequisites
@@ -27,31 +32,57 @@ sudo ./setup.sh
 
 ## 📁 Script Overview
 
+### Directory Layout
+
+- `0-linux/`: Core provisioning flow, validation scripts, and shared configuration (`provision.conf`, `setup.sh`, `validate-*`, etc.).
+- `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
+- `2-docker/`: Docker installation helpers, Portainer deployment, and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
+- `deployment/`: Docker/nginx-based deployment pipeline (left unchanged by this reorg).
+- Repository root: Documentation plus the main entrypoint `setup.sh`.
+
 ### Core Provisioning Scripts
-| Script | Purpose | User Required |
-|--------|---------|---------------|
-| `setup.sh` | Main orchestration script | root/sudo |
-| `create_user.sh` | Creates forge user with sudo access | root/sudo |
-| `add_ssh_key.sh` | Adds SSH keys to user accounts | target user |
-| `sshkeys.sh` | Interactive SSH key management | target user |
-| `security.sh` | Security hardening (firewall, fail2ban, etc.) | root/sudo |
-| `security_ratelimit.sh` | Additional security measures | root/sudo |
-| `docker.sh` | Docker installation and configuration | root/sudo |
-| `after-setup.sh` | Post-setup cleanup and file organization | root/sudo |
+| Script | Location | Purpose | User Required |
+|--------|----------|---------|---------------|
+| `setup.sh` | repository root | Main orchestration script with interactive flow | root/sudo |
+| `create_user.sh` | `0-linux/` | Creates forge user with sudo access | root/sudo |
+| `add_ssh_key.sh` | `0-linux/` | Adds SSH keys to user accounts | target user |
+| `sshkeys.sh` | `0-linux/` | Interactive SSH key management | target user |
+| `after-setup.sh` | `0-linux/` | Post-setup cleanup and file organization | root/sudo |
+| `security.sh` | `1-security/` | Security hardening (firewall, fail2ban, etc.) | root/sudo |
+| `security_ratelimit.sh` | `1-security/` | Additional security measures | root/sudo |
+| `docker.sh` | `2-docker/` | Installs Docker CE, Compose, and Portainer CE dashboard | root/sudo |
+| `configure-docker-proxy.sh` | `2-docker/` | Optional Docker proxy settings | root/sudo |
 
 ### Validation & Testing Scripts
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `validate-config.sh` | Pre-provisioning validation | Before running setup |
-| `test-provision.sh` | Comprehensive testing suite | Before deployment |
-| `validate-system.sh` | Post-provisioning validation | After provisioning |
+| `0-linux/validate-config.sh` | Pre-provisioning validation | Before running setup |
+| `0-linux/test-provision.sh` | Comprehensive testing suite | Before deployment |
+| `0-linux/validate-system.sh` | Post-provisioning validation | After provisioning |
 
 
 ### Configuration Files
 | File | Purpose | Required |
 |------|---------|----------|
-| `provision.conf` | Default configuration settings | Yes |
-| `provision.local.conf` | Local configuration overrides | Optional |
+| `0-linux/provision.conf` | Default configuration settings | Yes |
+| `0-linux/provision.local.conf` | Local configuration overrides | Optional |
+
+## 🐳 Docker & Portainer Dashboard
+
+- Running `sudo ./2-docker/docker.sh` installs Docker CE, Docker Compose, and automatically deploys **Portainer CE** for container management.
+- Portainer runs as container `portainer`, stores data inside the `portainer_data` volume, and exposes ports `8000` (edge agent) and `9443` (HTTPS UI).
+- After installation, browse to `https://<server-ip>:9443`, create the Portainer admin user, and connect to the local Docker instance (already mounted via `/var/run/docker.sock`).
+
+## 🧭 Provisioning Flow (interactive)
+
+1) Install basics: updates apt, adds universe, installs core utilities.  
+2) Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.  
+3) Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:datafynow/provision.git`.  
+4) Server type: prompts for desired server type and records it for the private repo.  
+5) Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.  
+6) Optional security: prompts for hardening and rate limiting.  
+7) Forge access: adds your SSH public key to `forge` for passwordless login.  
+8) Post-copy: scripts are copied to `/home/forge/provision` with proper perms.  
 
 ## 🔒 Security Features
 
@@ -100,7 +131,7 @@ The provisioning scripts use a centralized configuration system:
 Always validate your configuration before provisioning:
 ```bash
 # Validate configuration
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # This checks:
 # - Configuration file syntax
@@ -118,13 +149,13 @@ First, try the automated validation tools:
 
 ```bash
 # Check if configuration is valid
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # Run comprehensive tests
-./test-provision.sh
+./0-linux/test-provision.sh
 
 # Check if system is properly configured
-./validate-system.sh
+./0-linux/validate-system.sh
 ```
 
 These scripts will identify most common issues automatically.
@@ -142,13 +173,13 @@ These scripts will identify most common issues automatically.
 ### Regular Validation
 ```bash
 # Run system validation regularly (weekly/monthly)
-./validate-system.sh
+./0-linux/validate-system.sh
 
 # Check for configuration drift
-./validate-config.sh
+./0-linux/validate-config.sh
 
 # Run comprehensive tests before major changes
-./test-provision.sh
+./0-linux/test-provision.sh
 ```
 
 ### Regular Tasks
