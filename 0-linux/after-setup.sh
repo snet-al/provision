@@ -18,30 +18,30 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Verify forge user exists
-if ! id "forge" &>/dev/null; then
-    log_error "Forge user does not exist. Run create_user.sh first."
+# Verify default user exists
+if ! id "$DEFAULT_USER" &>/dev/null; then
+    log_error "User '$DEFAULT_USER' does not exist. Run create_user.sh first."
     exit 1
 fi
 
 log "Starting post-setup file organization..."
 
-# Copy all provisioning scripts to forge user's home
-log "Copying provisioning scripts to forge user's home directory..."
-SCRIPTS_DIR="/home/forge/provision"
+# Copy all provisioning scripts to user's home
+log "Copying provisioning scripts to $DEFAULT_USER's home directory..."
+SCRIPTS_DIR="/home/$DEFAULT_USER/provision"
 
 # Create directory with proper error handling
-if ! sudo -u forge mkdir -p "$SCRIPTS_DIR"; then
+if ! sudo -u "$DEFAULT_USER" mkdir -p "$SCRIPTS_DIR"; then
     log_error "Failed to create scripts directory: $SCRIPTS_DIR"
     exit 1
 fi
 
-# Synchronize key script directories so forge has the same structure
+# Synchronize key script directories so user has the same structure
 declare -a SCRIPT_SUBDIRS=("0-linux" "1-security" "2-docker" "deployment")
 for subdir in "${SCRIPT_SUBDIRS[@]}"; do
     local_source="$ROOT_DIR/$subdir"
     if [[ -d "$local_source" ]]; then
-        log "Syncing $subdir to forge's provision directory..."
+        log "Syncing $subdir to $DEFAULT_USER's provision directory..."
         if ! sudo rsync -a "$local_source/" "$SCRIPTS_DIR/$subdir/"; then
             log_error "Failed to sync $subdir to $SCRIPTS_DIR"
             exit 1
@@ -69,7 +69,7 @@ else
 fi
 
 # Set ownership
-if ! sudo chown -R forge:forge "$SCRIPTS_DIR"; then
+if ! sudo chown -R "$DEFAULT_USER:$DEFAULT_USER" "$SCRIPTS_DIR"; then
     log_error "Failed to set ownership for $SCRIPTS_DIR"
     exit 1
 fi

@@ -5,6 +5,7 @@ Automated deployment pipeline for managing applications in Docker containers wit
 ## Overview
 
 This deployment pipeline automatically:
+
 1. Monitors `/home/forge/deployments` for new repositories
 2. Checks for `Dockerfile.pf` in each repository
 3. Builds and runs Docker containers for valid repositories
@@ -38,6 +39,7 @@ sudo ./setup.sh
 ```
 
 This will:
+
 - Create the Docker network `deployment-network`
 - Start the nginx container
 - Create necessary directories
@@ -58,6 +60,7 @@ Start monitoring for new repositories:
 ### 3. Deploy a Repository
 
 Repositories should be placed in `/home/forge/deployments` with the naming format:
+
 ```
 /home/forge/deployments/d_{userId}_dataset{datasetId}_{repoName}.datafynow.ai/
 ```
@@ -65,6 +68,7 @@ Repositories should be placed in `/home/forge/deployments` with the naming forma
 Each repository must contain a `Dockerfile.pf` file in its root directory.
 
 Example:
+
 ```
 /home/forge/deployments/d_123_dataset456_demo.datafynow.ai/
 └── Dockerfile.pf
@@ -96,6 +100,7 @@ deployment/
 ### Nginx Configuration
 
 Nginx configurations are generated from `nginx-template.conf` and stored in:
+
 - Template: `deployment/nginx-template.conf`
 - Generated configs: `/home/forge/deployment/nginx-configs/sites-enabled/`
 
@@ -108,6 +113,7 @@ All containers run on the `deployment-network` network, allowing them to communi
 By default, application containers are expected to expose port `8080`. This can be overridden by specifying an `EXPOSE` directive in the `Dockerfile.pf`.
 
 Example:
+
 ```dockerfile
 FROM node:18
 WORKDIR /app
@@ -122,6 +128,7 @@ In this case, the application will be accessible on port 3000.
 ## Subdomain Routing
 
 Each deployment gets a subdomain based on the repository directory name (excluding the `_repoName` suffix):
+
 - Directory: `d_123_dataset456_demo.datafynow.ai`
 - Subdomain: `d_123_dataset456.datafynow.ai`
 
@@ -152,6 +159,7 @@ Directory names must follow the format `d_{userId}_dataset{datasetId}_{repoName}
 ### Container Failures
 
 If a container fails to start, the deployment will rollback:
+
 - Container is removed
 - Nginx configuration is removed
 - Error is logged
@@ -245,7 +253,7 @@ docker network prune
 ## Support
 
 For issues or questions, check:
+
 1. Deployment logs: `/home/forge/deployment/logs/deployment.log`
 2. Nginx logs: `docker logs deployment-nginx`
 3. Container logs: `docker logs <container-name>`
-

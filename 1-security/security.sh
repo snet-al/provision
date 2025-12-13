@@ -5,18 +5,14 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Configuration
-readonly LOG_FILE="/var/log/provision.log"
-readonly BACKUP_DIR="/etc/provision-backups"
+# Directory configuration
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LINUX_DIR="$SCRIPT_DIR/../0-linux"
 
-# Logging functions
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SECURITY: $1" | tee -a "$LOG_FILE"
-}
-
-log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SECURITY ERROR: $1" | tee -a "$LOG_FILE" >&2
-}
+# Source shared utilities (includes config loading and logging)
+LOG_PREFIX="SECURITY"
+# shellcheck source=../0-linux/utils.sh
+source "$LINUX_DIR/utils.sh"
 
 # Create backup directory
 create_backup_dir() {
@@ -79,16 +75,10 @@ if ! sudo apt upgrade -y; then
     exit 1
 fi
 
-# Install security essentials
-log "Installing security packages..."
-if ! sudo apt install -y \
-    ufw \
-    fail2ban \
-    unattended-upgrades \
-    apt-listchanges \
-    logwatch \
-    auditd \
-    rkhunter; then
+# Install security essentials from config
+log "Installing security packages: $SECURITY_PACKAGES"
+# shellcheck disable=SC2086
+if ! sudo apt install -y $SECURITY_PACKAGES; then
     log_error "Failed to install security packages"
     exit 1
 fi
@@ -103,20 +93,22 @@ configure_firewall() {
         log "UFW is already active. Checking configuration..."
     fi
 
-    # Set default policies
-    if ! sudo ufw --force default deny incoming; then
-        log_error "Failed to set UFW default deny incoming"
+    # Set default policies from config
+    log "Setting default incoming policy: $UFW_DEFAULT_INCOMING"
+    if ! sudo ufw --force default "$UFW_DEFAULT_INCOMING" incoming; then
+        log_error "Failed to set UFW default $UFW_DEFAULT_INCOMING incoming"
         exit 1
     fi
 
-    if ! sudo ufw --force default allow outgoing; then
-        log_error "Failed to set UFW default allow outgoing"
+    log "Setting default outgoing policy: $UFW_DEFAULT_OUTGOING"
+    if ! sudo ufw --force default "$UFW_DEFAULT_OUTGOING" outgoing; then
+        log_error "Failed to set UFW default $UFW_DEFAULT_OUTGOING outgoing"
         exit 1
     fi
 
-    # Allow essential services
-    local services=("ssh" "http" "https")
-    for service in "${services[@]}"; do
+    # Allow services from config
+    log "Allowing services: $UFW_ALLOWED_SERVICES"
+    for service in $UFW_ALLOWED_SERVICES; do
         if ! sudo ufw allow "$service"; then
             log_error "Failed to allow $service through firewall"
             exit 1
@@ -163,13 +155,14 @@ configure_fail2ban() {
     # Backup existing configuration
     backup_config "/etc/fail2ban/jail.d/sshd-hardening.conf"
 
-    # Create SSH hardening configuration
-    if ! sudo tee /etc/fail2ban/jail.d/sshd-hardening.conf > /dev/null << 'EOF'; then
+    # Create SSH hardening configuration using values from config
+    log "Fail2ban settings: maxretry=$FAIL2BAN_SSH_MAXRETRY, bantime=$FAIL2BAN_SSH_BANTIME, findtime=$FAIL2BAN_SSH_FINDTIME"
+    if ! sudo tee /etc/fail2ban/jail.d/sshd-hardening.conf > /dev/null << EOF; then
 [sshd]
 enabled  = true
-maxretry = 3
-bantime  = 1h
-findtime = 10m
+maxretry = $FAIL2BAN_SSH_MAXRETRY
+bantime  = $FAIL2BAN_SSH_BANTIME
+findtime = $FAIL2BAN_SSH_FINDTIME
 EOF
         log_error "Failed to create fail2ban SSH configuration"
         exit 1
@@ -229,14 +222,16 @@ secure_ssh_config() {
         return 0
     fi
 
-    # Add security hardening settings
+    # Add security hardening settings using values from config
+    log "SSH settings: Port=$SSH_PORT, MaxAuthTries=$SSH_MAX_AUTH_TRIES, PermitRootLogin=$SSH_PERMIT_ROOT_LOGIN"
     if ! sudo tee -a "$sshd_config" > /dev/null << EOL; then
 
 # Security hardening (added by provision script)
-PermitRootLogin no
-PasswordAuthentication no
-X11Forwarding no
-MaxAuthTries 3
+Port $SSH_PORT
+PermitRootLogin $SSH_PERMIT_ROOT_LOGIN
+PasswordAuthentication $SSH_PASSWORD_AUTH
+X11Forwarding $SSH_X11_FORWARDING
+MaxAuthTries $SSH_MAX_AUTH_TRIES
 Protocol 2
 EOL
         log_error "Failed to update SSH configuration"

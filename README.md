@@ -34,38 +34,40 @@ sudo ./setup.sh
 
 ### Directory Layout
 
-- `0-linux/`: Core provisioning flow, validation scripts, and shared configuration (`provision.conf`, `setup.sh`, `validate-*`, etc.).
+- `0-linux/`: Core provisioning flow, validation scripts, and utilities (`setup.sh`, `validate-*`, etc.).
 - `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
 - `2-docker/`: Docker installation helpers, Portainer deployment, and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
 - `deployment/`: Docker/nginx-based deployment pipeline (left unchanged by this reorg).
 - Repository root: Documentation plus the main entrypoint `setup.sh`.
 
 ### Core Provisioning Scripts
-| Script | Location | Purpose | User Required |
-|--------|----------|---------|---------------|
-| `setup.sh` | repository root | Main orchestration script with interactive flow | root/sudo |
-| `create_user.sh` | `0-linux/` | Creates forge user with sudo access | root/sudo |
-| `add_ssh_key.sh` | `0-linux/` | Adds SSH keys to user accounts | target user |
-| `sshkeys.sh` | `0-linux/` | Interactive SSH key management | target user |
-| `after-setup.sh` | `0-linux/` | Post-setup cleanup and file organization | root/sudo |
-| `security.sh` | `1-security/` | Security hardening (firewall, fail2ban, etc.) | root/sudo |
-| `security_ratelimit.sh` | `1-security/` | Additional security measures | root/sudo |
-| `docker.sh` | `2-docker/` | Installs Docker CE, Compose, and Portainer CE dashboard | root/sudo |
-| `configure-docker-proxy.sh` | `2-docker/` | Optional Docker proxy settings | root/sudo |
+
+| Script                      | Location        | Purpose                                                 | User Required |
+| --------------------------- | --------------- | ------------------------------------------------------- | ------------- |
+| `setup.sh`                  | repository root | Main orchestration script with interactive flow         | root/sudo     |
+| `create_user.sh`            | `0-linux/`      | Creates forge user with sudo access                     | root/sudo     |
+| `add_ssh_key.sh`            | `0-linux/`      | Adds SSH keys to user accounts                          | target user   |
+| `sshkeys.sh`                | `0-linux/`      | Interactive SSH key management                          | target user   |
+| `after-setup.sh`            | `0-linux/`      | Post-setup cleanup and file organization                | root/sudo     |
+| `security.sh`               | `1-security/`   | Security hardening (firewall, fail2ban, etc.)           | root/sudo     |
+| `security_ratelimit.sh`     | `1-security/`   | Additional security measures                            | root/sudo     |
+| `docker.sh`                 | `2-docker/`     | Installs Docker CE, Compose, and Portainer CE dashboard | root/sudo     |
+| `configure-docker-proxy.sh` | `2-docker/`     | Optional Docker proxy settings                          | root/sudo     |
 
 ### Validation & Testing Scripts
-| Script | Purpose | When to Use |
-|--------|---------|-------------|
-| `0-linux/validate-config.sh` | Pre-provisioning validation | Before running setup |
-| `0-linux/test-provision.sh` | Comprehensive testing suite | Before deployment |
-| `0-linux/validate-system.sh` | Post-provisioning validation | After provisioning |
 
+| Script                       | Purpose                      | When to Use          |
+| ---------------------------- | ---------------------------- | -------------------- |
+| `0-linux/validate-config.sh` | Pre-provisioning validation  | Before running setup |
+| `0-linux/test-provision.sh`  | Comprehensive testing suite  | Before deployment    |
+| `0-linux/validate-system.sh` | Post-provisioning validation | After provisioning   |
 
 ### Configuration Files
-| File | Purpose | Required |
-|------|---------|----------|
-| `0-linux/provision.conf` | Default configuration settings | Yes |
-| `0-linux/provision.local.conf` | Local configuration overrides | Optional |
+
+| File                   | Purpose                        | Required |
+| ---------------------- | ------------------------------ | -------- |
+| `provision.conf`       | Default configuration settings | Yes      |
+| `provision.local.conf` | Local configuration overrides  | Optional |
 
 ## 🐳 Docker & Portainer Dashboard
 
@@ -75,29 +77,32 @@ sudo ./setup.sh
 
 ## 🧭 Provisioning Flow (interactive)
 
-1) Install basics: updates apt, adds universe, installs core utilities.  
-2) Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.  
-3) Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:datafynow/provision.git`.  
-4) Server type: prompts for desired server type and records it for the private repo.  
-5) Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.  
-6) Optional security: prompts for hardening and rate limiting.  
-7) Forge access: adds your SSH public key to `forge` for passwordless login.  
-8) Post-copy: scripts are copied to `/home/forge/provision` with proper perms.  
+1. Install basics: updates apt, adds universe, installs core utilities.
+2. Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.
+3. Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:datafynow/provision.git`.
+4. Server type: prompts for desired server type and records it for the private repo.
+5. Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.
+6. Optional security: prompts for hardening and rate limiting.
+7. Forge access: adds your SSH public key to `forge` for passwordless login.
+8. Post-copy: scripts are copied to `/home/forge/provision` with proper perms.
 
 ## 🔒 Security Features
 
 ### Firewall Configuration
+
 - **UFW (Uncomplicated Firewall)** with restrictive defaults
 - **SSH, HTTP, HTTPS** ports allowed
 - **SSH rate limiting** to prevent brute force attacks
 
 ### SSH Hardening
+
 - **Root login disabled**
 - **Password authentication disabled**
 - **Key-based authentication only**
 - **Maximum 3 authentication attempts**
 
 ### System Hardening
+
 - **Fail2ban** for intrusion prevention
 - **Automatic security updates**
 - **Audit logging** for system monitoring
@@ -105,6 +110,7 @@ sudo ./setup.sh
 - **System resource limits**
 
 ### Service Security
+
 - **Database services** bound to localhost only
 - **SSL/TLS** enabled by default
 - **Protected mode** for Redis
@@ -116,10 +122,11 @@ sudo ./setup.sh
 
 The provisioning scripts use a centralized configuration system:
 
-- **`provision.conf`** - Default configuration settings
+- **`provision.conf`** (at repository root) - Default configuration settings
 - **`provision.local.conf`** - Local overrides (optional, takes precedence)
 
 ### Default Settings
+
 - **Default user**: `forge`
 - **SSH directory**: `/home/forge/.ssh`
 - **Scripts location**: `/home/forge/provision`
@@ -128,7 +135,9 @@ The provisioning scripts use a centralized configuration system:
 - **Service binding**: `127.0.0.1` (localhost only)
 
 #### Configuration Validation
+
 Always validate your configuration before provisioning:
+
 ```bash
 # Validate configuration
 ./0-linux/validate-config.sh
@@ -161,6 +170,7 @@ First, try the automated validation tools:
 These scripts will identify most common issues automatically.
 
 ### Log Locations
+
 - **Provisioning logs**: `/var/log/provision.log` (centralized logging for all scripts)
 - **Test logs**: `/tmp/provision-test.log` (from test-provision.sh)
 - **System logs**: `/var/log/syslog`
@@ -171,6 +181,7 @@ These scripts will identify most common issues automatically.
 ## 🔄 Maintenance
 
 ### Regular Validation
+
 ```bash
 # Run system validation regularly (weekly/monthly)
 ./0-linux/validate-system.sh
@@ -183,6 +194,7 @@ These scripts will identify most common issues automatically.
 ```
 
 ### Regular Tasks
+
 ```bash
 # Update system packages
 sudo apt update && sudo apt upgrade

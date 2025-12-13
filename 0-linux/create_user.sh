@@ -42,8 +42,8 @@ check_prerequisites() {
     fi
 }
 
-# Set default username to forge if no argument provided
-USERNAME=${1:-forge}
+# Set default username from config if no argument provided
+USERNAME=${1:-$DEFAULT_USER}
 
 # Validate inputs
 if ! validate_username "$USERNAME"; then

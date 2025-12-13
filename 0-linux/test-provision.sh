@@ -13,13 +13,16 @@ readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
 readonly NC='\033[0m' # No Color
 
-# Configuration
-readonly DEFAULT_USER="forge"
+# Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
 readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 readonly TEST_LOG="/tmp/provision-test.log"
+
+# Source shared utilities (includes config loading)
+# shellcheck source=utils.sh
+source "$SCRIPT_DIR/utils.sh"
 
 # Counters
 TESTS_RUN=0
@@ -98,8 +101,8 @@ test_config() {
     log_info "Testing configuration files..."
     
     log_test "Checking provision.conf"
-    if [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
-        if [[ -r "$SCRIPT_DIR/provision.conf" ]]; then
+    if [[ -f "$ROOT_DIR/provision.conf" ]]; then
+        if [[ -r "$ROOT_DIR/provision.conf" ]]; then
             log_pass "Configuration file provision.conf exists and is readable"
         else
             log_fail "Configuration file provision.conf exists but is not readable"
@@ -332,11 +335,11 @@ test_file_security() {
     done
     
     # Test configuration file permissions
-    if [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
+    if [[ -f "$ROOT_DIR/provision.conf" ]]; then
         log_test "Configuration file permissions"
         
         local conf_perms
-        conf_perms=$(stat -c "%a" "$SCRIPT_DIR/provision.conf")
+        conf_perms=$(stat -c "%a" "$ROOT_DIR/provision.conf")
         if [[ "$conf_perms" =~ ^6[0-4][0-4]$ ]]; then
             log_pass "Configuration file has secure permissions: $conf_perms"
         else

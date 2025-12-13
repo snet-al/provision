@@ -5,28 +5,17 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Configuration
+# Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$SCRIPT_DIR"
 readonly LINUX_DIR="$ROOT_DIR/0-linux"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
 readonly DOCKER_DIR="$ROOT_DIR/2-docker"
-readonly LOG_FILE="/var/log/provision.log"
-readonly DEFAULT_USER="forge"
 readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
 
-# Logging functions
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" | tee -a "$LOG_FILE" >&2
-}
-
-log_warning() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $1" | tee -a "$LOG_FILE"
-}
+# Source shared utilities (includes config loading and logging)
+# shellcheck source=0-linux/utils.sh
+source "$LINUX_DIR/utils.sh"
 
 # Error handling
 cleanup() {
@@ -131,23 +120,6 @@ init_logging() {
 # Helper functions
 ########################################
 
-# Basic input validators reused later
-validate_ssh_key() {
-    local key=$1
-    if ! echo "$key" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521) '; then
-        return 1
-    fi
-    return 0
-}
-
-validate_key_name() {
-    local name=$1
-    if ! echo "$name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
-        return 1
-    fi
-    return 0
-}
-
 ensure_script_permissions() {
     log "Ensuring all scripts have execute permissions..."
     
@@ -188,19 +160,12 @@ install_basic_utilities() {
         exit 1
     fi
 
-    log "Installing basic system utilities..."
-    if ! sudo apt install -y \
-        vim \
-        git \
-        net-tools \
-        libfuse2 \
-        htop \
-        tmux \
-        curl \
-        wget \
-        unzip \
-        rsync \
-        software-properties-common; then
+    log "Installing basic system utilities from config..."
+    log "Packages: $BASIC_PACKAGES"
+    
+    # Convert space-separated string to array and install
+    # shellcheck disable=SC2086
+    if ! sudo apt install -y $BASIC_PACKAGES; then
         log_error "Failed to install basic system utilities"
         exit 1
     fi
@@ -210,11 +175,6 @@ install_basic_utilities() {
 
 configure_updates_cron() {
     log "Configuring daily unattended upgrades (3:00 AM)..."
-
-    if ! sudo apt-get install -y unattended-upgrades; then
-        log_error "Failed to install unattended-upgrades"
-        exit 1
-    fi
 
     # Ensure release upgrades stay on LTS track (no automatic distro jumps)
     if [[ -f /etc/update-manager/release-upgrades ]]; then
@@ -361,7 +321,7 @@ create_forge_user() {
     fi
 }
 
-ensure_forge_repo_key() {
+ensure_provision_repo_access() {
     local ssh_dir="/home/$DEFAULT_USER/.ssh"
     local key_file="$ssh_dir/id_ed25519"
     local pub_file="$key_file.pub"
@@ -429,26 +389,9 @@ clone_provision_repo() {
 
 prompt_forge_ssh_key() {
     log "Configure SSH key for user '$DEFAULT_USER' (passwordless login)..."
-    local key_name ssh_key
-
-    while true; do
-        read -p "Enter a name for the forge SSH key (e.g., laptop, work): " key_name
-        if validate_key_name "$key_name"; then
-            break
-        fi
-        echo "Invalid key name. Use letters, numbers, underscore, or hyphen."
-    done
-
-    while true; do
-        read -p "Paste the SSH public key for $DEFAULT_USER: " ssh_key
-        if validate_ssh_key "$ssh_key"; then
-            break
-        fi
-        echo "Invalid SSH key format. Must start with ssh-rsa/ssh-ed25519/ecdsa-sha2-*"
-    done
-
-    if sudo -u "$DEFAULT_USER" "$LINUX_DIR/add_ssh_key.sh" "$key_name" "$ssh_key"; then
-        log "SSH key '$key_name' configured for user '$DEFAULT_USER'."
+    
+    if sudo -u "$DEFAULT_USER" "$LINUX_DIR/sshkeys.sh"; then
+        log "SSH key configured for user '$DEFAULT_USER'."
     else
         log_error "Failed to add SSH key for '$DEFAULT_USER'"
         exit 1
@@ -481,7 +424,7 @@ selected_type=$(choose_server_type)
 if [[ "$selected_type" == "basic" ]]; then
     log "Basic server selected; skipping private provision repository setup."
 else
-    ensure_forge_repo_key
+    ensure_provision_repo_access
     clone_provision_repo
     record_server_type "$selected_type"
     run_private_repo_setup "$selected_type"

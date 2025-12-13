@@ -5,13 +5,15 @@
 
 set -euo pipefail
 
-# Configuration files
-readonly DEFAULT_CONFIG="provision.conf"
-readonly LOCAL_CONFIG="provision.local.conf"
+# Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
 readonly DOCKER_DIR="$ROOT_DIR/2-docker"
+
+# Source shared utilities (includes config loading)
+# shellcheck source=utils.sh
+source "$SCRIPT_DIR/utils.sh"
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -25,7 +27,7 @@ ERRORS=0
 WARNINGS=0
 CHECKS=0
 
-# Logging functions
+# Validation-specific logging functions (with colors and counters)
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -35,40 +37,24 @@ log_success() {
     ((CHECKS++))
 }
 
+# Override log_warning for validation (with counter)
 log_warning() {
     echo -e "${YELLOW}[WARN]${NC} $1"
     ((WARNINGS++))
     ((CHECKS++))
 }
 
+# Override log_error for validation (with counter)
 log_error() {
     echo -e "${RED}[FAIL]${NC} $1"
     ((ERRORS++))
     ((CHECKS++))
 }
 
-# Load configuration
+# Config is already loaded by utils.sh, this function validates the load
 load_config() {
-    log_info "Loading configuration..."
-    
-    # Load default configuration
-    if [[ -f "$SCRIPT_DIR/$DEFAULT_CONFIG" ]]; then
-        # shellcheck source=provision.conf
-        source "$SCRIPT_DIR/$DEFAULT_CONFIG"
-        log_success "Default configuration loaded: $DEFAULT_CONFIG"
-    else
-        log_error "Default configuration file not found: $DEFAULT_CONFIG"
-        return 1
-    fi
-    
-    # Load local configuration if it exists
-    if [[ -f "$SCRIPT_DIR/$LOCAL_CONFIG" ]]; then
-        # shellcheck source=provision.local.conf
-        source "$SCRIPT_DIR/$LOCAL_CONFIG"
-        log_success "Local configuration loaded: $LOCAL_CONFIG"
-    else
-        log_info "No local configuration found (optional): $LOCAL_CONFIG"
-    fi
+    log_info "Configuration already loaded via utils.sh"
+    log_success "Configuration loaded from: $PROVISION_CONFIG_FILE"
 }
 
 # Validate system requirements

@@ -1,14 +1,28 @@
 #!/bin/bash
 
-echo "Configuring additional security measures..."
+# Additional security measures script
+# Configures SSH rate limiting and secure service binding
+
+set -euo pipefail
+
+# Directory configuration
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LINUX_DIR="$SCRIPT_DIR/../0-linux"
+
+# Source shared utilities (includes config loading and logging)
+LOG_PREFIX="SECURITY"
+# shellcheck source=../0-linux/utils.sh
+source "$LINUX_DIR/utils.sh"
+
+log "Configuring additional security measures..."
 
 # Configure SSH rate limiting with UFW
-echo "Setting up SSH rate limiting..."
+log "Setting up SSH rate limiting..."
 sudo ufw limit ssh/tcp comment 'Rate limit SSH connections'
 sudo ufw reload
 
 # Create secure service binding configuration
-echo "Setting up secure service binding..."
+log "Setting up secure service binding..."
 
 # Create sysctl configuration for service binding
 sudo tee /etc/sysctl.d/99-private-services.conf > /dev/null << EOL
@@ -152,6 +166,6 @@ All database services are configured to use SSL by default:
 - Redis: Protected mode enabled
 EOL
 
-echo "Additional security measures have been configured."
-echo "Use 'secure-service-config' to configure specific services."
-echo "Documentation available at /usr/local/share/doc/service-security.md" 
+log "Additional security measures have been configured."
+log "Use 'secure-service-config' to configure specific services."
+log "Documentation available at /usr/local/share/doc/service-security.md" 
