@@ -17,7 +17,7 @@ A comprehensive collection of shell scripts for provisioning and securing Ubuntu
 #    - Shows forge user's SSH key (use it to grant access to the private repo)
 #    - Clones git@github.com:datafynow/provision.git as forge (retries until success)
 #    - Adds your SSH key to forge for passwordless login
-sudo ./0-linux/setup.sh
+sudo ./setup.sh
 
 # 4. Validate the provisioned system
 ./0-linux/validate-system.sh
@@ -38,12 +38,12 @@ sudo ./0-linux/setup.sh
 - `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
 - `2-docker/`: Docker installation helpers, Portainer deployment, and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
 - `deployment/`: Docker/nginx-based deployment pipeline (left unchanged by this reorg).
-- Repository root: Documentation plus helper assets (e.g., this `README.md`).
+- Repository root: Documentation plus the main entrypoint `setup.sh`.
 
 ### Core Provisioning Scripts
 | Script | Location | Purpose | User Required |
 |--------|----------|---------|---------------|
-| `setup.sh` | `0-linux/` | Main orchestration script with interactive flow | root/sudo |
+| `setup.sh` | repository root | Main orchestration script with interactive flow | root/sudo |
 | `create_user.sh` | `0-linux/` | Creates forge user with sudo access | root/sudo |
 | `add_ssh_key.sh` | `0-linux/` | Adds SSH keys to user accounts | target user |
 | `sshkeys.sh` | `0-linux/` | Interactive SSH key management | target user |

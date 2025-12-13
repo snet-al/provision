@@ -7,7 +7,8 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
 # Configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly ROOT_DIR="$SCRIPT_DIR"
+readonly LINUX_DIR="$ROOT_DIR/0-linux"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
 readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 readonly LOG_FILE="/var/log/provision.log"
@@ -151,12 +152,12 @@ ensure_script_permissions() {
     log "Ensuring all scripts have execute permissions..."
     
     local scripts=(
-        "$SCRIPT_DIR/create_user.sh"
-        "$SCRIPT_DIR/add_ssh_key.sh"
+        "$LINUX_DIR/create_user.sh"
+        "$LINUX_DIR/add_ssh_key.sh"
         "$SECURITY_DIR/security.sh"
         "$SECURITY_DIR/security_ratelimit.sh"
         "$DOCKER_DIR/docker.sh"
-        "$SCRIPT_DIR/after-setup.sh"
+        "$LINUX_DIR/after-setup.sh"
     )
     
     for script_path in "${scripts[@]}"; do
@@ -348,7 +349,7 @@ create_forge_user() {
         log "User '$DEFAULT_USER' already exists."
     else
         log "Creating user '$DEFAULT_USER'..."
-        if ! "$SCRIPT_DIR/create_user.sh" "$DEFAULT_USER"; then
+        if ! "$LINUX_DIR/create_user.sh" "$DEFAULT_USER"; then
             log_error "Failed to create user '$DEFAULT_USER'"
             exit 1
         fi
@@ -446,7 +447,7 @@ prompt_forge_ssh_key() {
         echo "Invalid SSH key format. Must start with ssh-rsa/ssh-ed25519/ecdsa-sha2-*"
     done
 
-    if sudo -u "$DEFAULT_USER" "$SCRIPT_DIR/add_ssh_key.sh" "$key_name" "$ssh_key"; then
+    if sudo -u "$DEFAULT_USER" "$LINUX_DIR/add_ssh_key.sh" "$key_name" "$ssh_key"; then
         log "SSH key '$key_name' configured for user '$DEFAULT_USER'."
     else
         log_error "Failed to add SSH key for '$DEFAULT_USER'"
@@ -456,7 +457,7 @@ prompt_forge_ssh_key() {
 
 run_post_setup() {
     log "Running post-setup cleanup..."
-    if ! "$SCRIPT_DIR/after-setup.sh"; then
+    if ! "$LINUX_DIR/after-setup.sh"; then
         log_error "Post-setup cleanup failed"
         exit 1
     fi
