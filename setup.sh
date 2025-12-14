@@ -213,6 +213,8 @@ EOF
     log "Daily unattended upgrades configured."
 }
 
+SELECTED_SERVER_TYPE=""
+
 choose_server_type() {
     log "Select the server type to provision:"
     echo "1) Basic server"
@@ -222,9 +224,9 @@ choose_server_type() {
     while true; do
         read -p "Enter choice [1-3]: " choice
         case "$choice" in
-            1) echo "basic"; return 0 ;;
-            2) echo "multi_deployment"; return 0 ;;
-            3) echo "agents"; return 0 ;;
+            1) SELECTED_SERVER_TYPE="basic"; return 0 ;;
+            2) SELECTED_SERVER_TYPE="multi_deployment"; return 0 ;;
+            3) SELECTED_SERVER_TYPE="agents"; return 0 ;;
             *) echo "Invalid choice. Please enter 1, 2, or 3." ;;
         esac
     done
@@ -419,7 +421,8 @@ configure_updates_cron
 
 create_forge_user
 install_docker
-selected_type=$(choose_server_type)
+choose_server_type
+selected_type="$SELECTED_SERVER_TYPE"
 
 if [[ "$selected_type" == "basic" ]]; then
     log "Basic server selected; skipping private provision repository setup."
