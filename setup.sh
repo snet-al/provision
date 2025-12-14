@@ -5,6 +5,12 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
+HANDOFF_COMPLETE=false
+if [[ "${1:-}" == "--handoff" ]]; then
+    HANDOFF_COMPLETE=true
+    shift
+fi
+
 # Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LINUX_DIR="$SCRIPT_DIR/0-linux"
@@ -16,6 +22,7 @@ source "$LINUX_DIR/utils.sh"
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
 readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
+readonly TARGET_USER_REPO="/home/$DEFAULT_USER/provision"
 
 # Error handling
 cleanup() {
@@ -327,6 +334,38 @@ create_forge_user() {
     fi
 }
 
+handoff_to_user_repo() {
+    if [[ "$HANDOFF_COMPLETE" == true ]]; then
+        log "Running setup from user repository copy at $SCRIPT_DIR"
+        return 0
+    fi
+
+    if [[ "$SCRIPT_DIR" == "$TARGET_USER_REPO" ]]; then
+        log "Already executing from $TARGET_USER_REPO"
+        return 0
+    fi
+
+    log "Synchronizing provisioning repo to $TARGET_USER_REPO..."
+
+    if ! sudo -u "$DEFAULT_USER" mkdir -p "$TARGET_USER_REPO"; then
+        log_error "Failed to create target directory $TARGET_USER_REPO"
+        exit 1
+    fi
+
+    if ! rsync -a --delete "$ROOT_DIR/" "$TARGET_USER_REPO/"; then
+        log_error "Failed to synchronize provisioning repo to $TARGET_USER_REPO"
+        exit 1
+    fi
+
+    if ! chown -R "$DEFAULT_USER:$DEFAULT_USER" "$TARGET_USER_REPO"; then
+        log_error "Failed to set ownership for $TARGET_USER_REPO"
+        exit 1
+    fi
+
+    log "Re-launching setup from $TARGET_USER_REPO..."
+    exec "$TARGET_USER_REPO/setup.sh" --handoff "$@"
+}
+
 ensure_provision_repo_access() {
     local ssh_dir="/home/$DEFAULT_USER/.ssh"
     local key_file="$ssh_dir/id_ed25519"
@@ -416,6 +455,13 @@ run_post_setup() {
 ########################################
 # Main flow
 ########################################
+
+if [[ "$HANDOFF_COMPLETE" == false && "$SCRIPT_DIR" != "$TARGET_USER_REPO" ]]; then
+    init_logging
+    create_forge_user
+    handoff_to_user_repo "$@"
+    exit 0
+fi
 
 init_logging
 check_prerequisites
