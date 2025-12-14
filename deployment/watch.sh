@@ -199,8 +199,8 @@ watch_for_file_content_changes() {
     log "Watching for file changes in $DEPLOYMENTS_DIR..."
 
     inotifywait -m -r "$DEPLOYMENTS_DIR" \
-        --exclude '(^|/)(node_modules|\.git|dist|build|logs|storage|tmp|coverage|\.angular|target|\.gradle|gradle|out)(/|$)' \
-        -e modify -e close_write -e moved_to -e moved_from -e create -e delete \
+        --exclude '(^|/)(node_modules|\.git|dist|build|logs|storage|tmp|coverage|\.angular|target|\.gradle|gradle|out|\.m2|maven|venv|\.venv|\.env|\.idea|\.vscode|\.cache|\.npm|\.yarn|\.pnp|\.next|\.nuxt|\.turbo|\.swc|\.parcel-cache|\.svelte-kit|\.vercel|\.netlify|\.nx|\.docusaurus|\.nextjs|\.remix|\.redwood|\.expo|\.expo-shared|\.react-native|\.react|\.storybook|\.jest|\.cypress|\.playwright|\.test|\.spec|\.DS_Store|\.\w+\.\w+)(/|$)' \
+        -e close_write -e moved_to -e moved_from -e create -e delete \
         --format '%w%f' \
         -q 2>/dev/null | while read -r changed_path; do
 
@@ -213,35 +213,16 @@ watch_for_file_content_changes() {
             continue
         fi
 
-        # Extra safety: skip any path in ignored dirs
-        if [[ "$relative_path" == node_modules ]] || \
-           [[ "$relative_path" == */node_modules ]] || \
-           [[ "$relative_path" == node_modules/* ]] || \
-           [[ "$relative_path" == .git/* ]] || \
-           [[ "$relative_path" == dist/* ]] || \
-           [[ "$relative_path" == build/* ]] || \
-           [[ "$relative_path" == logs/* ]] || \
-           [[ "$relative_path" == storage/* ]] || \
-           [[ "$relative_path" == tmp/* ]] || \
-           [[ "$relative_path" == coverage/* ]] || \
-           [[ "$relative_path" == .angular/* ]] || \
-           [[ "$relative_path" == target/* ]] || \
-           [[ "$relative_path" == .gradle/* ]] || \
-           [[ "$relative_path" == gradle/* ]] || \
-           [[ "$relative_path" == out/* ]] || \
-           [[ "$relative_path" == */node_modules/* ]] || \
-           [[ "$relative_path" == */.git/* ]] || \
-           [[ "$relative_path" == */dist/* ]] || \
-           [[ "$relative_path" == */build/* ]] || \
-           [[ "$relative_path" == */logs/* ]] || \
-           [[ "$relative_path" == */storage/* ]] || \
-           [[ "$relative_path" == */tmp/* ]] || \
-           [[ "$relative_path" == */coverage/* ]] || \
-           [[ "$relative_path" == */.angular/* ]] || \
-           [[ "$relative_path" == */target/* ]] || \
-           [[ "$relative_path" == */.gradle/* ]] || \
-           [[ "$relative_path" == */gradle/* ]] || \
-           [[ "$relative_path" == */out/* ]]; then
+        # Extra safety: skip any path in ignored dirs and temporary files
+        # Pattern matches: /dir/, dir/, /dir, or dir at start/end of path
+        if [[ "$relative_path" =~ ^(node_modules|\.git|dist|build|logs|storage|tmp|coverage|\.angular|target|\.gradle|gradle|out|\.m2|maven|venv|\.venv|\.idea|\.vscode|\.cache|\.npm|\.yarn|\.next|\.nuxt)(/|$) ]] || \
+           [[ "$relative_path" =~ /(node_modules|\.git|dist|build|logs|storage|tmp|coverage|\.angular|target|\.gradle|gradle|out|\.m2|maven|venv|\.venv|\.idea|\.vscode|\.cache|\.npm|\.yarn|\.next|\.nuxt)(/|$) ]] || \
+           [[ "$relative_path" == .env ]]; then
+            continue
+        fi
+        
+        # Skip temporary files (e.g., .Layout.jsx.u4D5Ib) but not Dockerfile.pf
+        if [[ "$relative_path" =~ \.[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$ ]] && [[ ! "$relative_path" =~ Dockerfile\.pf$ ]]; then
             continue
         fi
 

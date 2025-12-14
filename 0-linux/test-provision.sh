@@ -13,10 +13,16 @@ readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
 readonly NC='\033[0m' # No Color
 
-# Configuration
-readonly DEFAULT_USER="forge"
+# Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly SECURITY_DIR="$ROOT_DIR/1-security"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 readonly TEST_LOG="/tmp/provision-test.log"
+
+# Source shared utilities (includes config loading)
+# shellcheck source=utils.sh
+source "$SCRIPT_DIR/utils.sh"
 
 # Counters
 TESTS_RUN=0
@@ -62,29 +68,30 @@ test_scripts() {
     log_info "Testing script files..."
     
     local scripts=(
-        "setup.sh"
-        "create_user.sh"
-        "add_ssh_key.sh"
-        "sshkeys.sh"
-        "security.sh"
-        "security_ratelimit.sh"
-        "docker.sh"
-        "after-setup.sh"
-        "validate-config.sh"
-        "validate-system.sh"
+        "$SCRIPT_DIR/setup.sh"
+        "$SCRIPT_DIR/create_user.sh"
+        "$SCRIPT_DIR/add_ssh_key.sh"
+        "$SCRIPT_DIR/sshkeys.sh"
+        "$SCRIPT_DIR/after-setup.sh"
+        "$SCRIPT_DIR/validate-config.sh"
+        "$SCRIPT_DIR/validate-system.sh"
+        "$SECURITY_DIR/security.sh"
+        "$SECURITY_DIR/security_ratelimit.sh"
+        "$DOCKER_DIR/docker.sh"
     )
     
-    for script in "${scripts[@]}"; do
-        log_test "Checking script: $script"
+    for script_path in "${scripts[@]}"; do
+        local display_path="${script_path#$ROOT_DIR/}"
+        log_test "Checking script: ${display_path:-$script_path}"
         
-        if [[ -f "$SCRIPT_DIR/$script" ]]; then
-            if [[ -x "$SCRIPT_DIR/$script" ]]; then
-                log_pass "Script $script exists and is executable"
+        if [[ -f "$script_path" ]]; then
+            if [[ -x "$script_path" ]]; then
+                log_pass "Script ${display_path:-$script_path} exists and is executable"
             else
-                log_fail "Script $script exists but is not executable"
+                log_fail "Script ${display_path:-$script_path} exists but is not executable"
             fi
         else
-            log_fail "Script $script is missing"
+            log_fail "Script ${display_path:-$script_path} is missing"
         fi
     done
 }
@@ -94,8 +101,8 @@ test_config() {
     log_info "Testing configuration files..."
     
     log_test "Checking provision.conf"
-    if [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
-        if [[ -r "$SCRIPT_DIR/provision.conf" ]]; then
+    if [[ -f "$ROOT_DIR/provision.conf" ]]; then
+        if [[ -r "$ROOT_DIR/provision.conf" ]]; then
             log_pass "Configuration file provision.conf exists and is readable"
         else
             log_fail "Configuration file provision.conf exists but is not readable"
@@ -105,9 +112,9 @@ test_config() {
     fi
     
     log_test "Checking README.md"
-    if [[ -f "$SCRIPT_DIR/README.md" ]]; then
+    if [[ -f "$ROOT_DIR/README.md" ]]; then
         local readme_size
-        readme_size=$(wc -l < "$SCRIPT_DIR/README.md")
+        readme_size=$(wc -l < "$ROOT_DIR/README.md")
         if [[ $readme_size -gt 50 ]]; then
             log_pass "README.md exists and has substantial content ($readme_size lines)"
         else
@@ -306,28 +313,33 @@ test_file_security() {
     log_info "Testing file permissions and security..."
     
     # Test script permissions
-    local scripts=("setup.sh" "security.sh" "docker.sh")
+    local script_paths=(
+        "$SCRIPT_DIR/setup.sh"
+        "$SECURITY_DIR/security.sh"
+        "$DOCKER_DIR/docker.sh"
+    )
     
-    for script in "${scripts[@]}"; do
-        if [[ -f "$SCRIPT_DIR/$script" ]]; then
-            log_test "Script permissions: $script"
+    for script_path in "${script_paths[@]}"; do
+        if [[ -f "$script_path" ]]; then
+            local display_path="${script_path#$ROOT_DIR/}"
+            log_test "Script permissions: ${display_path:-$script_path}"
             
             local perms
-            perms=$(stat -c "%a" "$SCRIPT_DIR/$script")
+            perms=$(stat -c "%a" "$script_path")
             if [[ "$perms" =~ ^7[0-5][0-5]$ ]]; then
-                log_pass "Script '$script' has secure permissions: $perms"
+                log_pass "Script '${display_path:-$script_path}' has secure permissions: $perms"
             else
-                log_fail "Script '$script' has insecure permissions: $perms"
+                log_fail "Script '${display_path:-$script_path}' has insecure permissions: $perms"
             fi
         fi
     done
     
     # Test configuration file permissions
-    if [[ -f "$SCRIPT_DIR/provision.conf" ]]; then
+    if [[ -f "$ROOT_DIR/provision.conf" ]]; then
         log_test "Configuration file permissions"
         
         local conf_perms
-        conf_perms=$(stat -c "%a" "$SCRIPT_DIR/provision.conf")
+        conf_perms=$(stat -c "%a" "$ROOT_DIR/provision.conf")
         if [[ "$conf_perms" =~ ^6[0-4][0-4]$ ]]; then
             log_pass "Configuration file has secure permissions: $conf_perms"
         else

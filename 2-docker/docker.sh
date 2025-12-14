@@ -5,85 +5,25 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Configuration
-readonly LOG_FILE="/var/log/provision.log"
-readonly DOCKER_GPG_URL="https://download.docker.com/linux/ubuntu/gpg"
+# Directory configuration
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LINUX_DIR="$SCRIPT_DIR/../0-linux"
+
+# Source shared utilities (includes config loading and logging)
+LOG_PREFIX="DOCKER"
+# shellcheck source=../0-linux/utils.sh
+source "$LINUX_DIR/utils.sh"
+
+# Docker-specific configuration (can be overridden in provision.conf)
 readonly DOCKER_GPG_KEY="/etc/apt/keyrings/docker.asc"
+readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
+readonly PORTAINER_CONTAINER_NAME="portainer"
+readonly PORTAINER_VOLUME_NAME="portainer_data"
+readonly PORTAINER_HTTP_PORT="8000"
+readonly PORTAINER_HTTPS_PORT="9443"
 
-# Ensure log file is accessible
-ensure_log_file() {
-    if [[ ! -f "$LOG_FILE" ]]; then
-        touch "$LOG_FILE"
-        chmod 644 "$LOG_FILE"
-    fi
-}
-
-# Logging functions
-log() {
-    ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER: $1"
-}
-
-log_error() {
-    ensure_log_file
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] DOCKER ERROR: $1" >&2
-}
-
-# Check prerequisites
-check_prerequisites() {
-    log "Checking Docker installation prerequisites..."
-
-    # Check if running as root or with sudo
-    if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root or with sudo"
-        exit 1
-    fi
-
-    # Check internet connectivity with multiple methods
-    log "Checking internet connectivity..."
-    local connectivity_ok=false
-    
-    # Method 1: Try ping to Google DNS
-    if ping -c 1 8.8.8.8 &>/dev/null; then
-        connectivity_ok=true
-        log "Internet connectivity confirmed via ping to 8.8.8.8"
-    else
-        log "Ping to 8.8.8.8 failed, trying alternative methods..."
-        
-        # Method 2: Try curl to a reliable endpoint
-        if curl -s --connect-timeout 5 --max-time 10 https://httpbin.org/ip &>/dev/null; then
-            connectivity_ok=true
-            log "Internet connectivity confirmed via HTTPS to httpbin.org"
-        else
-            # Method 3: Try DNS resolution
-            if nslookup google.com &>/dev/null; then
-                connectivity_ok=true
-                log "Internet connectivity confirmed via DNS resolution"
-            else
-                # Method 4: Try apt update (which will fail gracefully if no internet)
-                if timeout 10 apt update &>/dev/null; then
-                    connectivity_ok=true
-                    log "Internet connectivity confirmed via apt update"
-                fi
-            fi
-        fi
-    fi
-    
-    if [[ "$connectivity_ok" = false ]]; then
-        log_error "No internet connectivity detected using multiple methods."
-        log_error "Docker cannot be downloaded without internet access."
-        
-        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log "Docker installation cancelled due to network connectivity issues"
-            exit 1
-        else
-            log "Continuing Docker installation without internet connectivity verification"
-        fi
-    fi
-
-    # Check if Docker is already installed
+# Check if Docker is already installed
+check_docker_installed() {
     if command -v docker &>/dev/null; then
         local docker_version
         docker_version=$(docker --version 2>/dev/null || echo "unknown")
@@ -93,33 +33,15 @@ check_prerequisites() {
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log "Docker installation cancelled by user"
-            # exit 0 # continue in the case we are executing multiple time provision
+            return 1
         fi
     fi
-
-    log "Prerequisites check completed"
-}
-
-# Install Docker dependencies
-install_dependencies() {
-    log "Installing Docker dependencies..."
-
-    if ! sudo apt-get update; then
-        log_error "Failed to update package lists"
-        exit 1
-    fi
-
-    if ! sudo apt-get install -y ca-certificates curl; then
-        log_error "Failed to install Docker dependencies"
-        exit 1
-    fi
-
-    log "Docker dependencies installed successfully"
+    return 0
 }
 
 # Setup Docker GPG key
 setup_docker_gpg() {
-    log "Setting up Docker GPG key..."
+    log "Setting up Docker GPG key from: $DOCKER_GPG_URL"
 
     # Create keyrings directory
     if ! sudo install -m 0755 -d /etc/apt/keyrings; then
@@ -127,7 +49,7 @@ setup_docker_gpg() {
         exit 1
     fi
 
-    # Download Docker GPG key
+    # Download Docker GPG key (using URL from config)
     if ! sudo curl -fsSL "$DOCKER_GPG_URL" -o "$DOCKER_GPG_KEY"; then
         log_error "Failed to download Docker GPG key"
         exit 1
@@ -159,7 +81,7 @@ add_docker_repository() {
 
 # Install Docker packages
 install_docker_packages() {
-    log "Installing Docker packages..."
+    log "Installing Docker packages: $DOCKER_PACKAGES"
 
     # Update package lists with new repository
     if ! sudo apt-get update; then
@@ -167,16 +89,9 @@ install_docker_packages() {
         exit 1
     fi
 
-    # Install Docker packages
-    local packages=(
-        "docker-ce"
-        "docker-ce-cli"
-        "containerd.io"
-        "docker-buildx-plugin"
-        "docker-compose-plugin"
-    )
-
-    if ! sudo apt-get install -y "${packages[@]}"; then
+    # Install Docker packages from config
+    # shellcheck disable=SC2086
+    if ! sudo apt-get install -y $DOCKER_PACKAGES; then
         log_error "Failed to install Docker packages"
         exit 1
     fi
@@ -186,7 +101,7 @@ install_docker_packages() {
 
 # Configure Docker access
 configure_docker_access() {
-    log "Configuring Docker access for user: forge"
+    log "Configuring Docker access for user: $DEFAULT_USER"
 
     # Create docker group (may already exist)
     if ! sudo groupadd docker 2>/dev/null; then
@@ -195,13 +110,13 @@ configure_docker_access() {
         log "Docker group created"
     fi
 
-    # Add current user to docker group
-    if ! sudo usermod -aG docker "forge"; then
-        log_error "Failed to add user forge to docker group"
+    # Add user from config to docker group
+    if ! sudo usermod -aG docker "$DEFAULT_USER"; then
+        log_error "Failed to add user $DEFAULT_USER to docker group"
         exit 1
     fi
 
-    log "User forge added to docker group successfully"
+    log "User $DEFAULT_USER added to docker group successfully"
 }
 
 # Start and enable Docker service
@@ -263,18 +178,66 @@ verify_installation() {
     log "Docker installation verification completed"
 }
 
+# Install / update Portainer
+install_portainer() {
+    log "Setting up Portainer CE dashboard..."
+
+    # Ensure data volume exists
+    if sudo docker volume ls --format '{{.Name}}' | grep -Fx "$PORTAINER_VOLUME_NAME" &>/dev/null; then
+        log "Portainer data volume already exists ($PORTAINER_VOLUME_NAME)"
+    else
+        log "Creating Portainer data volume ($PORTAINER_VOLUME_NAME)..."
+        if ! sudo docker volume create "$PORTAINER_VOLUME_NAME" >/dev/null; then
+            log_error "Failed to create Portainer volume"
+            exit 1
+        fi
+    fi
+
+    # Pull latest Portainer image (tolerate failure but warn)
+    if ! sudo docker pull "$PORTAINER_IMAGE"; then
+        log_error "Failed to pull $PORTAINER_IMAGE"
+        exit 1
+    fi
+
+    # If container exists, ensure it's running and updated
+    if sudo docker ps -a --format '{{.Names}}' | grep -Fx "$PORTAINER_CONTAINER_NAME" &>/dev/null; then
+        log "Portainer container already exists"
+        log "Updating Portainer container to latest image..."
+        if ! sudo docker stop "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1; then
+            log_warning "Could not stop existing Portainer container (it may already be stopped)"
+        fi
+        sudo docker rm "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
+
+    log "Creating Portainer container..."
+    if ! sudo docker run -d \
+        --name "$PORTAINER_CONTAINER_NAME" \
+        --restart unless-stopped \
+        -p "${PORTAINER_HTTP_PORT}:8000" \
+        -p "${PORTAINER_HTTPS_PORT}:9443" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v "${PORTAINER_VOLUME_NAME}":/data \
+        "$PORTAINER_IMAGE" >/dev/null; then
+        log_error "Failed to start Portainer container"
+        exit 1
+    fi
+
+    log "Portainer is running (HTTPS port ${PORTAINER_HTTPS_PORT}, HTTP port ${PORTAINER_HTTP_PORT})."
+    log "Access it via https://<server-ip>:${PORTAINER_HTTPS_PORT} after setting up the admin user."
+}
+
 # Main installation process
 main() {
     log "Starting Docker installation process..."
 
-    check_prerequisites
-    install_dependencies
+    check_docker_installed || return 0
     setup_docker_gpg
     add_docker_repository
     install_docker_packages
     configure_docker_access
     start_docker_service
     verify_installation
+    install_portainer
 
     log "Docker installation completed successfully"
 
@@ -282,12 +245,15 @@ main() {
     echo "✅ Docker installation completed successfully!"
     echo "🐳 Docker version: $(sudo docker --version)"
     echo "🔧 Docker Compose version: $(sudo docker compose version)"
-    echo "👤 User 'forge' has been added to the docker group"
+    echo "👤 User '$DEFAULT_USER' has been added to the docker group"
+    echo
+    echo "🛳  Portainer CE has been deployed on ports ${PORTAINER_HTTP_PORT} (HTTP) / ${PORTAINER_HTTPS_PORT} (HTTPS)"
     echo
     echo "📋 Next steps:"
-    echo "   1. Log out and log back in for group changes to take effect"
-    echo "   2. Test Docker access: docker run hello-world"
-    echo "   3. Check Docker status: systemctl status docker"
+    echo "   1. Visit https://<server-ip>:${PORTAINER_HTTPS_PORT} to finish Portainer setup"
+    echo "   2. Log out and back in for docker group membership to take effect"
+    echo "   3. Test Docker access: docker run hello-world"
+    echo "   4. Check Docker status: systemctl status docker"
     echo
     echo "⚠️  Important: You must log out and log back in before using Docker without sudo!"
 }

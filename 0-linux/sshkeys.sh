@@ -6,8 +6,11 @@
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
 # Configuration
-readonly LOG_FILE="/var/log/provision.log"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source shared utilities with prefix
+LOG_PREFIX="SSH-KEYS"
+source "$SCRIPT_DIR/utils.sh"
 
 # Colors for output
 readonly GREEN='\033[0;32m'
@@ -15,15 +18,6 @@ readonly RED='\033[0;31m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
-
-# Logging functions
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH-KEYS: $1" | tee -a "$LOG_FILE"
-}
-
-log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH-KEYS ERROR: $1" | tee -a "$LOG_FILE" >&2
-}
 
 # Function to validate SSH key
 validate_ssh_key() {

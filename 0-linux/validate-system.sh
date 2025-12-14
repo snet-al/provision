@@ -17,11 +17,14 @@ ERRORS=0
 WARNINGS=0
 CHECKS=0
 
-# Configuration
-readonly DEFAULT_USER="forge"
-readonly LOG_FILE="/var/log/provision.log"
+# Directory configuration
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Logging functions
+# Source shared utilities (includes config loading)
+# shellcheck source=utils.sh
+source "$SCRIPT_DIR/utils.sh"
+
+# Validation-specific logging functions (with colors and counters)
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -31,6 +34,7 @@ log_success() {
     ((CHECKS++))
 }
 
+# Override log_warning for validation (with counter)
 log_warning() {
     echo -e "${YELLOW}[WARN]${NC} $1"
     ((WARNINGS++))
