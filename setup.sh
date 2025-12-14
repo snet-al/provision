@@ -114,6 +114,9 @@ init_logging() {
     log "Script version: $(date '+%Y%m%d')"
     log "Running as: $(whoami)"
     log "Working directory: $SCRIPT_DIR"
+
+    # Always ensure scripts have execute permissions before continuing
+    ensure_script_permissions
 }
 
 ########################################
@@ -416,7 +419,6 @@ run_post_setup() {
 
 init_logging
 check_prerequisites
-ensure_script_permissions
 install_basic_utilities
 configure_updates_cron
 
