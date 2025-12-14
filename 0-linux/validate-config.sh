@@ -5,16 +5,6 @@
 
 set -euo pipefail
 
-# Directory configuration
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-readonly SECURITY_DIR="$ROOT_DIR/1-security"
-readonly DOCKER_DIR="$ROOT_DIR/2-docker"
-
-# Source shared utilities (includes config loading)
-# shellcheck source=utils.sh
-source "$SCRIPT_DIR/utils.sh"
-
 # Colors for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
