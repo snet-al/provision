@@ -332,6 +332,10 @@ create_forge_user() {
     if ! sudo -u "$DEFAULT_USER" sudo -n true 2>/dev/null; then
         log_warning "User '$DEFAULT_USER' may not have proper sudo access"
     fi
+
+    sudo touch "$LOG_FILE"
+    sudo chown "$DEFAULT_USER:$DEFAULT_USER" "$LOG_FILE"
+    sudo chmod 664 "$LOG_FILE"
 }
 
 handoff_to_user_repo() {
