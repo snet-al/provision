@@ -94,28 +94,34 @@ get_key_name() {
     local max_attempts=3
 
     while [[ $attempts -lt $max_attempts ]]; do
-        echo -e "${BLUE}Step 1: Key Name${NC}"
-        echo "Enter a descriptive name for this SSH key."
-        echo "Examples: laptop, work, deploy, personal, server1"
-        echo
+        {
+            echo -e "${BLUE}Step 1: Key Name${NC}"
+            echo "Enter a descriptive name for this SSH key."
+            echo "Examples: laptop, work, deploy, personal, server1"
+            echo
+        } >&2
         read -p "Key name: " key_name
 
         if validate_key_name "$key_name"; then
-            echo -e "${GREEN}✓ Key name '$key_name' is valid${NC}"
+            echo -e "${GREEN}✓ Key name '$key_name' is valid${NC}" >&2
             echo "$key_name"
             return 0
         else
             ((attempts++))
-            echo -e "${RED}✗ Invalid key name${NC}"
-            echo "Key name must:"
-            echo "  • Be 1-50 characters long"
-            echo "  • Use only letters, numbers, underscore, and hyphen"
-            echo "  • Not contain spaces or special characters"
-            echo
+            {
+                echo -e "${RED}✗ Invalid key name${NC}"
+                echo "Key name must:"
+                echo "  • Be 1-50 characters long"
+                echo "  • Use only letters, numbers, underscore, and hyphen"
+                echo "  • Not contain spaces or special characters"
+                echo
+            } >&2
 
             if [[ $attempts -lt $max_attempts ]]; then
-                echo "Please try again ($((max_attempts - attempts)) attempts remaining):"
-                echo
+                {
+                    echo "Please try again ($((max_attempts - attempts)) attempts remaining):"
+                    echo
+                } >&2
             fi
         fi
     done
@@ -131,12 +137,14 @@ get_ssh_key() {
     local max_attempts=3
 
     while [[ $attempts -lt $max_attempts ]]; do
-        echo -e "${BLUE}Step 2: SSH Public Key${NC}"
-        echo "Paste your SSH public key below."
-        echo "The key should start with ssh-rsa, ssh-ed25519, or ecdsa-sha2-*"
-        echo
-        echo "Need help? Type 'help' to see key format examples."
-        echo
+        {
+            echo -e "${BLUE}Step 2: SSH Public Key${NC}"
+            echo "Paste your SSH public key below."
+            echo "The key should start with ssh-rsa, ssh-ed25519, or ecdsa-sha2-*"
+            echo
+            echo "Need help? Type 'help' to see key format examples."
+            echo
+        } >&2
         read -p "SSH public key: " ssh_key
 
         # Check for help request
@@ -147,22 +155,26 @@ get_ssh_key() {
         fi
 
         if validate_ssh_key "$ssh_key"; then
-            echo -e "${GREEN}✓ SSH key format is valid${NC}"
+            echo -e "${GREEN}✓ SSH key format is valid${NC}" >&2
             echo "$ssh_key"
             return 0
         else
             ((attempts++))
-            echo -e "${RED}✗ Invalid SSH key format${NC}"
-            echo "The key should:"
-            echo "  • Start with ssh-rsa, ssh-ed25519, or ecdsa-sha2-*"
-            echo "  • Have at least two parts (type and key data)"
-            echo "  • Be a complete public key"
-            echo
+            {
+                echo -e "${RED}✗ Invalid SSH key format${NC}"
+                echo "The key should:"
+                echo "  • Start with ssh-rsa, ssh-ed25519, or ecdsa-sha2-*"
+                echo "  • Have at least two parts (type and key data)"
+                echo "  • Be a complete public key"
+                echo
+            } >&2
 
             if [[ $attempts -lt $max_attempts ]]; then
-                echo "Please try again ($((max_attempts - attempts)) attempts remaining):"
-                echo "Type 'help' for format examples."
-                echo
+                {
+                    echo "Please try again ($((max_attempts - attempts)) attempts remaining):"
+                    echo "Type 'help' for format examples."
+                    echo
+                } >&2
             fi
         fi
     done
