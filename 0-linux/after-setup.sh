@@ -8,8 +8,6 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # Source shared utilities
 source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly DOCKER_PROXY_SCRIPT="$ROOT_DIR/2-docker/configure-docker-proxy.sh"
 
 # Check if running as root or with sudo

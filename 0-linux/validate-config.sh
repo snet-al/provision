@@ -5,6 +5,16 @@
 
 set -euo pipefail
 
+# Determine project paths (script lives in 0-linux/)
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly LINUX_DIR="$SCRIPT_DIR/0-linux"
+readonly SECURITY_DIR="$SCRIPT_DIR/1-security"
+readonly DOCKER_DIR="$SCRIPT_DIR/2-docker"
+
+# Load shared utilities (brings in config and logging helpers)
+# shellcheck source=0-linux/utils.sh
+source "$LINUX_DIR/utils.sh"
+
 # Colors for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
