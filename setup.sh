@@ -8,13 +8,15 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LINUX_DIR="$SCRIPT_DIR/0-linux"
-readonly SECURITY_DIR="$ROOT_DIR/1-security"
-readonly DOCKER_DIR="$ROOT_DIR/2-docker"
-readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
 
 # Source shared utilities (includes config loading and logging)
 # shellcheck source=0-linux/utils.sh
 source "$LINUX_DIR/utils.sh"
+
+readonly SECURITY_DIR="$ROOT_DIR/1-security"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker"
+readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
+
 # Error handling
 cleanup() {
     local exit_code=$?

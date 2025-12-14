@@ -15,13 +15,14 @@ readonly NC='\033[0m' # No Color
 
 # Directory configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SECURITY_DIR="$ROOT_DIR/1-security"
-readonly DOCKER_DIR="$ROOT_DIR/2-docker"
-readonly TEST_LOG="/tmp/provision-test.log"
 
 # Source shared utilities (includes config loading)
 # shellcheck source=utils.sh
 source "$SCRIPT_DIR/utils.sh"
+
+readonly SECURITY_DIR="$ROOT_DIR/1-security"
+readonly DOCKER_DIR="$ROOT_DIR/2-docker"
+readonly TEST_LOG="/tmp/provision-test.log"
 
 # Counters
 TESTS_RUN=0
