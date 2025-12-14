@@ -47,8 +47,10 @@ for subdir in "${SCRIPT_SUBDIRS[@]}"; do
     fi
 done
 
-# Copy root-level shell scripts (if any remain) for completeness
-if compgen -G "$ROOT_DIR/*.sh" > /dev/null; then
+# Copy root-level shell scripts (if source differs from destination)
+if [[ "$ROOT_DIR" == "$SCRIPTS_DIR" ]]; then
+    log "Root-level scripts already reside in $SCRIPTS_DIR; skipping copy."
+elif compgen -G "$ROOT_DIR/*.sh" > /dev/null; then
     if ! sudo cp "$ROOT_DIR"/*.sh "$SCRIPTS_DIR/"; then
         log_error "Failed to copy root-level shell scripts to $SCRIPTS_DIR"
         exit 1
