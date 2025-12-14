@@ -126,6 +126,7 @@ ensure_script_permissions() {
     local scripts=(
         "$LINUX_DIR/create_user.sh"
         "$LINUX_DIR/add_ssh_key.sh"
+        "$LINUX_DIR/sshkeys.sh"
         "$SECURITY_DIR/security.sh"
         "$SECURITY_DIR/security_ratelimit.sh"
         "$DOCKER_DIR/docker.sh"
