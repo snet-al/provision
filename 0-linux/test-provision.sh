@@ -68,7 +68,7 @@ test_scripts() {
     log_info "Testing script files..."
     
     local scripts=(
-        "$SCRIPT_DIR/setup.sh"
+        "$ROOT_DIR/setup.sh"
         "$SCRIPT_DIR/create_user.sh"
         "$SCRIPT_DIR/add_ssh_key.sh"
         "$SCRIPT_DIR/sshkeys.sh"
