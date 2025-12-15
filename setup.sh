@@ -441,7 +441,7 @@ prompt_portainer_admin_password() {
 import json
 import sys
 
-password = sys.stdin.read().rstrip("\n")
+password = sys.stdin.read().strip()
 print(json.dumps({"Username": "admin", "Password": password, "PasswordConfirm": password}))
 PY
         ); then
