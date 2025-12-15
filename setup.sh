@@ -21,7 +21,7 @@ source "$LINUX_DIR/utils.sh"
 
 readonly SECURITY_DIR="$ROOT_DIR/1-security"
 readonly DOCKER_DIR="$ROOT_DIR/2-docker"
-readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-private"
+readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-servers"
 readonly TARGET_USER_REPO="/home/$DEFAULT_USER/provision"
 
 # Error handling
@@ -252,7 +252,7 @@ record_server_type() {
     log "Saved server type '$type' to $type_file"
 }
 
-# Map server types to their folder names in provision-privaterepo
+# Map server types to their folder names in provision-servers repo
 get_server_type_folder() {
     local type="$1"
     case "$type" in
