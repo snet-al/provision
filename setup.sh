@@ -252,18 +252,30 @@ record_server_type() {
     log "Saved server type '$type' to $type_file"
 }
 
-run_private_repo_setup() {
+# Map server types to their folder names in provision-privaterepo
+get_server_type_folder() {
     local type="$1"
-    local repo_script="$PRIVATE_REPO_DIR/setup.sh"
+    case "$type" in
+        multi_deployment) echo "deployment" ;;
+        agents) echo "agents" ;;
+        *) echo "" ;;
+    esac
+}
 
-    if [[ -x "$repo_script" ]]; then
-        log "Running private repo setup with server type '$type'..."
-        if ! sudo -u "$DEFAULT_USER" "$repo_script" "$type"; then
-            log_error "Private repo setup script failed"
+run_server_type_setup() {
+    local type="$1"
+    local server_folder=$(get_server_type_folder "$type")
+    local setup_script="$PRIVATE_REPO_DIR/$server_folder/setup.sh"
+
+    if [[ -x "$setup_script" ]]; then
+        log "Running server type setup script: $setup_script"
+        if ! sudo -u "$DEFAULT_USER" "$setup_script"; then
+            log_error "Server type setup script failed"
             exit 1
         fi
+        log "Server type setup completed successfully"
     else
-        log_warning "Private repo setup script not found or not executable at $repo_script. Skipping."
+        log_warning "Server type setup script not found or not executable at $setup_script. Skipping."
     fi
 }
 
@@ -397,7 +409,7 @@ ensure_provision_repo_access() {
     fi
     sudo chmod 644 "$known_hosts" || true
 
-    log "Forge user SSH public key (add to git@github.com:datafynow/provision.git access):"
+    log "Forge user SSH public key (add to git@github.com:snet-al/provision-servers.git access):"
     echo "--------------------------------------------"
     sudo -u "$DEFAULT_USER" cat "$pub_file"
     echo "--------------------------------------------"
@@ -405,11 +417,11 @@ ensure_provision_repo_access() {
     read -p "Press Enter after this key has been granted access to the private repo to continue..." _
 }
 
-clone_provision_repo() {
+clone_provision_servers_repo() {
     local target_dir="$PRIVATE_REPO_DIR"
-    local repo_url="git@github.com:datafynow/provision.git"
+    local repo_url="git@github.com:snet-al/provision-servers.git"
 
-    log "Ensuring private provision repo is present at $target_dir ..."
+    log "Ensuring provision-servers repo is present at $target_dir ..."
 
     sudo -u "$DEFAULT_USER" mkdir -p "$target_dir"
 
@@ -417,7 +429,7 @@ clone_provision_repo() {
         if [[ -d "$target_dir/.git" ]]; then
             log "Repo already exists, pulling latest..."
             if sudo -u "$DEFAULT_USER" git -C "$target_dir" pull --rebase --autostash; then
-                log "Provision repo updated at $target_dir"
+                log "Provision-servers repo updated at $target_dir"
                 break
             else
                 log_warning "Pull failed; retrying in 5s..."
@@ -426,7 +438,7 @@ clone_provision_repo() {
         else
             log "Cloning $repo_url into $target_dir ..."
             if sudo -u "$DEFAULT_USER" git clone "$repo_url" "$target_dir"; then
-                log "Provision repo cloned to $target_dir"
+                log "Provision-servers repo cloned to $target_dir"
                 break
             else
                 log_warning "Clone failed; retrying in 5s..."
@@ -481,9 +493,9 @@ if [[ "$selected_type" == "basic" ]]; then
     log "Basic server selected; skipping private provision repository setup."
 else
     ensure_provision_repo_access
-    clone_provision_repo
+    clone_provision_servers_repo
     record_server_type "$selected_type"
-    run_private_repo_setup "$selected_type"
+    run_server_type_setup "$selected_type"
 fi
 
 apply_security_hardening
