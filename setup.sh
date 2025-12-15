@@ -406,7 +406,7 @@ install_docker() {
         install_portainer_env="true"
     fi
 
-    if ! INSTALL_PORTAINER="$install_portainer_env" "$docker_script"; then
+    if ! DOCKER_ASSUME_YES="true" INSTALL_PORTAINER="$install_portainer_env" "$docker_script"; then
         log_error "Docker installation script failed"
         exit 1
     fi

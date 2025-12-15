@@ -29,11 +29,16 @@ check_docker_installed() {
         docker_version=$(docker --version 2>/dev/null || echo "unknown")
         log "Docker is already installed: $docker_version"
 
-        read -p "Docker is already installed. Do you want to continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log "Docker installation cancelled by user"
-            return 1
+        local auto_continue="${DOCKER_ASSUME_YES:-false}"
+        if [[ "$auto_continue" =~ ^([Tt]rue|[Yy]es|1)$ ]]; then
+            log "Docker reinstall approved via DOCKER_ASSUME_YES; continuing without prompt."
+        else
+            read -p "Docker is already installed. Do you want to continue anyway? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log "Docker installation cancelled by user"
+                return 1
+            fi
         fi
     fi
     return 0
