@@ -31,6 +31,7 @@ readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
 readonly PORTAINER_PASSWORD_MIN_LENGTH=12
 readonly PORTAINER_PASSWORD_POLICY="Password must include at least one uppercase letter, one lowercase letter, and one number."
 DOCKER_PRESENT_BEFORE_INSTALL=false
+INSTALL_PORTAINER_SELECTED=true
 
 # Error handling
 cleanup() {
@@ -163,6 +164,37 @@ ensure_script_permissions() {
     done
     
     log "Script permissions check completed"
+}
+
+prompt_portainer_install_choice() {
+    echo
+    echo "Portainer provides a web UI to manage Docker. Installation is optional."
+    local choice
+    read -rp "Do you want to install Portainer CE on this server? (Y/n): " choice
+    if [[ "$choice" =~ ^[Nn]$ ]]; then
+        INSTALL_PORTAINER_SELECTED=false
+        log "Portainer installation disabled by user."
+    else
+        INSTALL_PORTAINER_SELECTED=true
+        log "Portainer installation enabled by user choice."
+    fi
+    echo
+}
+
+determine_portainer_installation() {
+    if [[ -n "${INSTALL_PORTAINER:-}" ]]; then
+        local normalized="${INSTALL_PORTAINER,,}"
+        if [[ "$normalized" =~ ^(false|0|no|n)$ ]]; then
+            INSTALL_PORTAINER_SELECTED=false
+            log "Portainer installation disabled via INSTALL_PORTAINER environment variable."
+        else
+            INSTALL_PORTAINER_SELECTED=true
+            log "Portainer installation enabled via INSTALL_PORTAINER environment variable."
+        fi
+        return
+    fi
+
+    prompt_portainer_install_choice
 }
 
 install_basic_utilities() {
@@ -332,7 +364,12 @@ install_docker() {
         exit 1
     fi
 
-    if ! "$docker_script"; then
+    local install_portainer_env="false"
+    if [[ "$INSTALL_PORTAINER_SELECTED" == true ]]; then
+        install_portainer_env="true"
+    fi
+
+    if ! INSTALL_PORTAINER="$install_portainer_env" "$docker_script"; then
         log_error "Docker installation script failed"
         exit 1
     fi
@@ -655,24 +692,30 @@ check_prerequisites
 install_basic_utilities
 configure_updates_cron
 
+determine_portainer_installation
+
 create_forge_user
 install_docker
 
-if [[ "$DOCKER_PRESENT_BEFORE_INSTALL" == true ]]; then
-    reuse_portainer_choice=""
-    if read -rp "Docker was already installed. Do you want to (re)configure Portainer now? (y/N): " -n 1 reuse_portainer_choice; then
-        echo
-        if [[ "$reuse_portainer_choice" =~ ^[Yy]$ ]]; then
-            configure_portainer_admin_password true
+if [[ "$INSTALL_PORTAINER_SELECTED" == true ]]; then
+    if [[ "$DOCKER_PRESENT_BEFORE_INSTALL" == true ]]; then
+        reuse_portainer_choice=""
+        if read -rp "Docker was already installed. Reinstall Portainer (existing data will be removed)? (y/N): " -n 1 reuse_portainer_choice; then
+            echo
+            if [[ "$reuse_portainer_choice" =~ ^[Yy]$ ]]; then
+                configure_portainer_admin_password true
+            else
+                log "Portainer configuration skipped because user declined."
+            fi
         else
-            log "Portainer configuration skipped because user declined."
+            echo
+            log_warning "Input aborted; skipping Portainer configuration."
         fi
     else
-        echo
-        log_warning "Input aborted; skipping Portainer configuration."
+        configure_portainer_admin_password false
     fi
 else
-    configure_portainer_admin_password false
+    log "Portainer installation skipped per user selection."
 fi
 
 choose_server_type

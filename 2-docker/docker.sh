@@ -178,6 +178,9 @@ verify_installation() {
     log "Docker installation verification completed"
 }
 
+# Control Portainer installation
+INSTALL_PORTAINER="${INSTALL_PORTAINER:-true}"
+
 # Install / update Portainer
 install_portainer() {
     log "Setting up Portainer CE dashboard..."
@@ -242,7 +245,12 @@ main() {
     configure_docker_access
     start_docker_service
     verify_installation
-    install_portainer
+    local install_portainer_choice="${INSTALL_PORTAINER,,}"
+    if [[ "$install_portainer_choice" == "true" || "$install_portainer_choice" == "1" || "$install_portainer_choice" == "yes" || "$install_portainer_choice" == "y" ]]; then
+        install_portainer
+    else
+        log "Skipping Portainer deployment (INSTALL_PORTAINER=$INSTALL_PORTAINER)."
+    fi
 
     log "Docker installation completed successfully"
 
