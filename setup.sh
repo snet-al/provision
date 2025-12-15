@@ -26,6 +26,7 @@ readonly TARGET_USER_REPO="/home/$DEFAULT_USER/provision"
 readonly PORTAINER_CONTAINER_NAME="portainer"
 readonly PORTAINER_HTTPS_PORT="9443"
 readonly PORTAINER_PASSWORD_MIN_LENGTH=12
+readonly PORTAINER_PASSWORD_POLICY="Password must include at least one uppercase letter, one lowercase letter, and one number."
 
 # Error handling
 cleanup() {
@@ -331,6 +332,32 @@ install_docker() {
     log "Docker installation completed."
 }
 
+validate_portainer_password() {
+    local password="$1"
+
+    if ((${#password} < PORTAINER_PASSWORD_MIN_LENGTH)); then
+        echo "Password must be at least ${PORTAINER_PASSWORD_MIN_LENGTH} characters."
+        return 1
+    fi
+
+    if [[ ! "$password" =~ [[:upper:]] ]]; then
+        echo "Password must contain at least one uppercase letter."
+        return 1
+    fi
+
+    if [[ ! "$password" =~ [[:lower:]] ]]; then
+        echo "Password must contain at least one lowercase letter."
+        return 1
+    fi
+
+    if [[ ! "$password" =~ [[:digit:]] ]]; then
+        echo "Password must contain at least one number."
+        return 1
+    fi
+
+    return 0
+}
+
 prompt_portainer_admin_password() {
     log "Checking if Portainer admin password needs to be configured..."
 
@@ -374,6 +401,7 @@ prompt_portainer_admin_password() {
 
     echo
     echo "Portainer requires an admin password before its API and dashboard become available."
+    echo "Requirements: ${PORTAINER_PASSWORD_MIN_LENGTH}+ chars, include upper/lowercase letters and numbers."
     echo "Leave the password blank to skip and finish the setup manually in your browser later."
     echo
 
@@ -392,8 +420,7 @@ prompt_portainer_admin_password() {
             return 0
         fi
 
-        if ((${#portainer_password} < PORTAINER_PASSWORD_MIN_LENGTH)); then
-            echo "Password must be at least ${PORTAINER_PASSWORD_MIN_LENGTH} characters."
+        if ! validate_portainer_password "$portainer_password"; then
             continue
         fi
 
@@ -409,60 +436,70 @@ prompt_portainer_admin_password() {
             continue
         fi
 
-        break
-    done
-
-    local json_payload=""
-    if ! json_payload=$(printf '%s' "$portainer_password" | python3 - <<'PY'
+        local json_payload=""
+        if ! json_payload=$(printf '%s' "$portainer_password" | python3 - <<'PY'
 import json
 import sys
 
 password = sys.stdin.read().rstrip("\n")
 print(json.dumps({"Username": "admin", "Password": password, "PasswordConfirm": password}))
 PY
-    ); then
-        log_warning "Failed to prepare Portainer password payload; please finish the setup manually."
+        ); then
+            log_warning "Failed to prepare Portainer password payload; please finish the setup manually."
+            return 0
+        fi
+
+        local response_file=""
+        if ! response_file=$(mktemp); then
+            log_warning "Unable to create temporary file for Portainer API response; please finish the setup manually."
+            return 0
+        fi
+
+        local http_code="000"
+        if ! http_code=$(curl -sk \
+            --connect-timeout 5 \
+            --max-time 15 \
+            -w '%{http_code}' \
+            -o "$response_file" \
+            -H 'Content-Type: application/json' \
+            -X POST "https://127.0.0.1:${PORTAINER_HTTPS_PORT}/api/users/admin/init" \
+            --data "$json_payload"); then
+            http_code="000"
+        fi
+
+        local response_body=""
+        if ! response_body=$(cat "$response_file"); then
+            response_body=""
+        fi
+        rm -f "$response_file"
+
+        local response_lower="${response_body,,}"
+
+        case "$http_code" in
+            200|204)
+                log "Portainer admin password configured successfully."
+                unset -v portainer_password portainer_password_confirm json_payload
+                return 0
+                ;;
+            409)
+                log "Portainer admin account already initialized; skipping password prompt."
+                unset -v portainer_password portainer_password_confirm json_payload
+                return 0
+                ;;
+            400)
+                if [[ "$response_lower" == *"invalid password"* ]]; then
+                    echo "Portainer rejected the password: ${response_body}"
+                    echo "Please enter a new password that meets the requirements."
+                    continue
+                fi
+                ;;
+        esac
+
+        log_warning "Failed to initialize Portainer admin user (HTTP $http_code). Response: ${response_body:-<empty>}"
+        log_warning "Complete the Portainer setup manually by visiting https://<server-ip>:${PORTAINER_HTTPS_PORT}"
+        unset -v portainer_password portainer_password_confirm json_payload
         return 0
-    fi
-
-    local response_file=""
-    if ! response_file=$(mktemp); then
-        log_warning "Unable to create temporary file for Portainer API response; please finish the setup manually."
-        return 0
-    fi
-
-    local http_code="000"
-    if ! http_code=$(curl -sk \
-        --connect-timeout 5 \
-        --max-time 15 \
-        -w '%{http_code}' \
-        -o "$response_file" \
-        -H 'Content-Type: application/json' \
-        -X POST "https://127.0.0.1:${PORTAINER_HTTPS_PORT}/api/users/admin/init" \
-        --data "$json_payload"); then
-        http_code="000"
-    fi
-
-    local response_body=""
-    if ! response_body=$(cat "$response_file"); then
-        response_body=""
-    fi
-    rm -f "$response_file"
-
-    case "$http_code" in
-        200|204)
-            log "Portainer admin password configured successfully."
-            ;;
-        409)
-            log "Portainer admin account already initialized; skipping password prompt."
-            ;;
-        *)
-            log_warning "Failed to initialize Portainer admin user (HTTP $http_code). Response: ${response_body:-<empty>}"
-            log_warning "Complete the Portainer setup manually by visiting https://<server-ip>:${PORTAINER_HTTPS_PORT}"
-            ;;
-    esac
-
-    unset -v portainer_password portainer_password_confirm json_payload
+    done
 }
 
 create_forge_user() {
