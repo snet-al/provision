@@ -31,6 +31,7 @@ readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
 readonly PORTAINER_PASSWORD_MIN_LENGTH=12
 readonly PORTAINER_PASSWORD_POLICY="Password must include at least one uppercase letter, one lowercase letter, and one number."
 DOCKER_PRESENT_BEFORE_INSTALL=false
+PORTAINER_PRESENT_BEFORE_INSTALL=false
 INSTALL_DOCKER_SELECTED=true
 INSTALL_PORTAINER_SELECTED=true
 
@@ -227,6 +228,23 @@ determine_portainer_installation() {
     fi
 
     prompt_portainer_install_choice
+}
+
+detect_portainer_presence() {
+    PORTAINER_PRESENT_BEFORE_INSTALL=false
+
+    if ! command -v docker &>/dev/null; then
+        return
+    fi
+
+    if sudo docker ps -a --format '{{.Names}}' | grep -Fxq "$PORTAINER_CONTAINER_NAME"; then
+        PORTAINER_PRESENT_BEFORE_INSTALL=true
+        return
+    fi
+
+    if sudo docker volume ls --format '{{.Name}}' | grep -Fxq "$PORTAINER_VOLUME_NAME"; then
+        PORTAINER_PRESENT_BEFORE_INSTALL=true
+    fi
 }
 
 install_basic_utilities() {
@@ -733,6 +751,7 @@ determine_docker_installation
 
 if [[ "$INSTALL_DOCKER_SELECTED" == true ]]; then
     determine_portainer_installation
+    detect_portainer_presence
 else
     INSTALL_PORTAINER_SELECTED=false
 fi
@@ -740,15 +759,15 @@ fi
 create_forge_user
 install_docker
 
-if [[ "$INSTALL_PORTAINER_SELECTED" == true ]]; then
-    if [[ "$DOCKER_PRESENT_BEFORE_INSTALL" == true ]]; then
-        reuse_portainer_choice=""
-        if read -rp "Docker was already installed. Reinstall Portainer (existing data will be removed)? (y/N): " -n 1 reuse_portainer_choice; then
+if [[ "$INSTALL_DOCKER_SELECTED" == true && "$INSTALL_PORTAINER_SELECTED" == true ]]; then
+    if [[ "$PORTAINER_PRESENT_BEFORE_INSTALL" == true ]]; then
+        local reuse_portainer_choice=""
+        if read -rp "Existing Portainer installation detected. Reinstall and wipe data? (y/N): " -n 1 reuse_portainer_choice; then
             echo
             if [[ "$reuse_portainer_choice" =~ ^[Yy]$ ]]; then
                 configure_portainer_admin_password true
             else
-                log "Portainer configuration skipped because user declined."
+                log "Portainer reconfiguration skipped by user."
             fi
         else
             echo
@@ -757,7 +776,7 @@ if [[ "$INSTALL_PORTAINER_SELECTED" == true ]]; then
     else
         configure_portainer_admin_password false
     fi
-else
+elif [[ "$INSTALL_PORTAINER_SELECTED" != true ]]; then
     log "Portainer installation skipped per user selection."
 fi
 
