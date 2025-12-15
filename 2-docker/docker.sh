@@ -19,7 +19,7 @@ readonly DOCKER_GPG_KEY="/etc/apt/keyrings/docker.asc"
 readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
 readonly PORTAINER_CONTAINER_NAME="portainer"
 readonly PORTAINER_VOLUME_NAME="portainer_data"
-readonly PORTAINER_HTTP_PORT="8000"
+readonly PORTAINER_HTTP_PORT="9000"
 readonly PORTAINER_HTTPS_PORT="9443"
 
 # Check if Docker is already installed
@@ -213,7 +213,7 @@ install_portainer() {
     if ! sudo docker run -d \
         --name "$PORTAINER_CONTAINER_NAME" \
         --restart unless-stopped \
-        -p "${PORTAINER_HTTP_PORT}:8000" \
+        -p "${PORTAINER_HTTP_PORT}:9000" \
         -p "${PORTAINER_HTTPS_PORT}:9443" \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v "${PORTAINER_VOLUME_NAME}":/data \
