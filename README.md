@@ -37,7 +37,6 @@ sudo ./setup.sh
 - `0-linux/`: Core provisioning flow, validation scripts, and utilities (`setup.sh`, `validate-*`, etc.).
 - `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
 - `2-docker/`: Docker installation helpers, Portainer deployment, and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
-- `deployment/`: Docker/nginx-based deployment pipeline (left unchanged by this reorg).
 - Repository root: Documentation plus the main entrypoint `setup.sh`.
 
 ### Core Provisioning Scripts
@@ -79,7 +78,7 @@ sudo ./setup.sh
 
 1. Install basics: updates apt, adds universe, installs core utilities.
 2. Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.
-3. Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:datafynow/provision.git`.
+3. Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:snet-al/provision-servers.git`.
 4. Server type: prompts for desired server type and records it for the private repo.
 5. Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.
 6. Optional security: prompts for hardening and rate limiting.
