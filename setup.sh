@@ -30,6 +30,7 @@ readonly PORTAINER_VOLUME_NAME="portainer_data"
 readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
 readonly PORTAINER_PASSWORD_MIN_LENGTH=12
 readonly PORTAINER_PASSWORD_POLICY="Password must include at least one uppercase letter, one lowercase letter, and one number."
+DOCKER_PRESENT_BEFORE_INSTALL=false
 
 # Error handling
 cleanup() {
@@ -322,6 +323,10 @@ install_docker() {
     log "Ensuring Docker is installed (default)..."
     local docker_script="$DOCKER_DIR/docker.sh"
 
+    if command -v docker >/dev/null 2>&1; then
+        DOCKER_PRESENT_BEFORE_INSTALL=true
+    fi
+
     if [[ ! -x "$docker_script" ]]; then
         log_error "Docker installation script not found or not executable at $docker_script"
         exit 1
@@ -361,6 +366,30 @@ validate_portainer_password() {
     return 0
 }
 
+cleanup_portainer_resources() {
+    local remove_volume="${1:-false}"
+
+    if ! command -v docker &>/dev/null; then
+        return 0
+    fi
+
+    if sudo docker ps -a --format '{{.Names}}' | grep -Fxq "$PORTAINER_CONTAINER_NAME"; then
+        log "Stopping existing Portainer container..."
+        sudo docker stop "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
+        log "Removing existing Portainer container..."
+        sudo docker rm "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
+
+    if [[ "$remove_volume" == true ]]; then
+        if sudo docker volume ls --format '{{.Name}}' | grep -Fxq "$PORTAINER_VOLUME_NAME"; then
+            log "Removing existing Portainer data volume ($PORTAINER_VOLUME_NAME)..."
+            if ! sudo docker volume rm "$PORTAINER_VOLUME_NAME" >/dev/null 2>&1; then
+                log_warning "Failed to remove Portainer volume $PORTAINER_VOLUME_NAME"
+            fi
+        fi
+    fi
+}
+
 generate_portainer_password_hash() {
     local password="$1"
     local hash
@@ -379,15 +408,11 @@ generate_portainer_password_hash() {
 }
 
 configure_portainer_admin_password() {
+    local purge_data="${1:-false}"
     log "Configuring Portainer admin password via container redeploy..."
 
     if ! command -v docker &>/dev/null; then
         log_warning "Docker CLI not available; skipping Portainer admin password configuration."
-        return 0
-    fi
-
-    if ! sudo docker ps -a --format '{{.Names}}' | grep -Fxq "$PORTAINER_CONTAINER_NAME"; then
-        log_warning "Portainer container '$PORTAINER_CONTAINER_NAME' was not found; skipping password configuration."
         return 0
     fi
 
@@ -446,6 +471,8 @@ configure_portainer_admin_password() {
         return 0
     fi
 
+    cleanup_portainer_resources "$purge_data"
+
     if ! sudo docker volume ls --format '{{.Name}}' | grep -Fxq "$PORTAINER_VOLUME_NAME"; then
         log "Creating Portainer data volume ($PORTAINER_VOLUME_NAME)..."
         if ! sudo docker volume create "$PORTAINER_VOLUME_NAME" >/dev/null; then
@@ -453,10 +480,6 @@ configure_portainer_admin_password() {
             exit 1
         fi
     fi
-
-    log "Stopping any existing Portainer container..."
-    sudo docker stop "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
-    sudo docker rm "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
 
     log "Starting Portainer with the configured admin password..."
     if ! sudo docker run -d \
@@ -634,7 +657,24 @@ configure_updates_cron
 
 create_forge_user
 install_docker
-configure_portainer_admin_password
+
+if [[ "$DOCKER_PRESENT_BEFORE_INSTALL" == true ]]; then
+    reuse_portainer_choice=""
+    if read -rp "Docker was already installed. Do you want to (re)configure Portainer now? (y/N): " -n 1 reuse_portainer_choice; then
+        echo
+        if [[ "$reuse_portainer_choice" =~ ^[Yy]$ ]]; then
+            configure_portainer_admin_password true
+        else
+            log "Portainer configuration skipped because user declined."
+        fi
+    else
+        echo
+        log_warning "Input aborted; skipping Portainer configuration."
+    fi
+else
+    configure_portainer_admin_password false
+fi
+
 choose_server_type
 selected_type="$SELECTED_SERVER_TYPE"
 
