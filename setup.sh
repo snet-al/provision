@@ -24,7 +24,10 @@ readonly DOCKER_DIR="$ROOT_DIR/2-docker"
 readonly PRIVATE_REPO_DIR="$ROOT_DIR/provision-servers"
 readonly TARGET_USER_REPO="/home/$DEFAULT_USER/provision"
 readonly PORTAINER_CONTAINER_NAME="portainer"
+readonly PORTAINER_HTTP_PORT="9000"
 readonly PORTAINER_HTTPS_PORT="9443"
+readonly PORTAINER_VOLUME_NAME="portainer_data"
+readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
 readonly PORTAINER_PASSWORD_MIN_LENGTH=12
 readonly PORTAINER_PASSWORD_POLICY="Password must include at least one uppercase letter, one lowercase letter, and one number."
 
@@ -358,44 +361,33 @@ validate_portainer_password() {
     return 0
 }
 
-prompt_portainer_admin_password() {
-    log "Checking if Portainer admin password needs to be configured..."
+generate_portainer_password_hash() {
+    local password="$1"
+    local hash
+
+    if ! hash=$(sudo docker run --rm \
+        -e PORTAINER_ADMIN_PASSWORD_INPUT="$password" \
+        httpd:2.4-alpine \
+        sh -c 'printf "%s" "$PORTAINER_ADMIN_PASSWORD_INPUT" | htpasswd -nBi admin | cut -d: -f2' 2>/dev/null); then
+        return 1
+    fi
+
+    # Remove any trailing carriage returns/newlines
+    PORTAINER_PASSWORD_HASH="${hash//$'\r'/}"
+    PORTAINER_PASSWORD_HASH="${PORTAINER_PASSWORD_HASH//$'\n'/}"
+    return 0
+}
+
+configure_portainer_admin_password() {
+    log "Configuring Portainer admin password via container redeploy..."
 
     if ! command -v docker &>/dev/null; then
-        log_warning "Docker CLI not available; skipping Portainer admin password prompt."
+        log_warning "Docker CLI not available; skipping Portainer admin password configuration."
         return 0
     fi
 
-    if ! sudo docker ps --format '{{.Names}}' | grep -Fxq "$PORTAINER_CONTAINER_NAME"; then
-        log_warning "Portainer container '$PORTAINER_CONTAINER_NAME' is not running; skipping password prompt."
-        return 0
-    fi
-
-    if ! command -v python3 &>/dev/null; then
-        log_warning "python3 is required to securely prepare the Portainer password payload; skipping automatic initialization."
-        log_warning "Complete the Portainer setup manually at https://<server-ip>:${PORTAINER_HTTPS_PORT}"
-        return 0
-    fi
-
-    local status_code="000"
-    local portainer_ready=false
-    local attempt
-    local max_attempts=20
-    for ((attempt=1; attempt<=max_attempts; attempt++)); do
-        if ! status_code=$(curl -sk --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "https://127.0.0.1:${PORTAINER_HTTPS_PORT}/api/status"); then
-            status_code="000"
-        fi
-
-        if [[ "$status_code" == "200" ]]; then
-            portainer_ready=true
-            break
-        fi
-
-        sleep 2
-    done
-
-    if [[ "$portainer_ready" != true ]]; then
-        log_warning "Portainer API is not reachable yet; complete the admin password setup manually via https://<server-ip>:${PORTAINER_HTTPS_PORT}"
+    if ! sudo docker ps -a --format '{{.Names}}' | grep -Fxq "$PORTAINER_CONTAINER_NAME"; then
+        log_warning "Portainer container '$PORTAINER_CONTAINER_NAME' was not found; skipping password configuration."
         return 0
     fi
 
@@ -407,8 +399,10 @@ prompt_portainer_admin_password() {
 
     local portainer_password=""
     local portainer_password_confirm=""
+    local portainer_hash=""
+
     while true; do
-        if ! read -rsp "Enter new Portainer admin password (min ${PORTAINER_PASSWORD_MIN_LENGTH} chars, blank to skip): " portainer_password; then
+        if ! read -rsp "Enter new Portainer admin password (blank to skip): " portainer_password; then
             echo
             log_warning "Input aborted; skipping Portainer admin password initialization."
             return 0
@@ -436,70 +430,50 @@ prompt_portainer_admin_password() {
             continue
         fi
 
-        local json_payload=""
-        if ! json_payload=$(printf '%s' "$portainer_password" | python3 - <<'PY'
-import json
-import sys
-
-password = sys.stdin.read().strip()
-print(json.dumps({"Username": "admin", "Password": password, "PasswordConfirm": password}))
-PY
-        ); then
-            log_warning "Failed to prepare Portainer password payload; please finish the setup manually."
-            return 0
+        if generate_portainer_password_hash "$portainer_password"; then
+            portainer_hash="$PORTAINER_PASSWORD_HASH"
+            break
+        else
+            log_warning "Failed to generate bcrypt hash for Portainer password (docker required)."
+            echo "Retrying password entry..."
         fi
-
-        local response_file=""
-        if ! response_file=$(mktemp); then
-            log_warning "Unable to create temporary file for Portainer API response; please finish the setup manually."
-            return 0
-        fi
-
-        local http_code="000"
-        if ! http_code=$(curl -sk \
-            --connect-timeout 5 \
-            --max-time 15 \
-            -w '%{http_code}' \
-            -o "$response_file" \
-            -H 'Content-Type: application/json' \
-            -X POST "https://127.0.0.1:${PORTAINER_HTTPS_PORT}/api/users/admin/init" \
-            --data "$json_payload"); then
-            http_code="000"
-        fi
-
-        local response_body=""
-        if ! response_body=$(cat "$response_file"); then
-            response_body=""
-        fi
-        rm -f "$response_file"
-
-        local response_lower="${response_body,,}"
-
-        case "$http_code" in
-            200|204)
-                log "Portainer admin password configured successfully."
-                unset -v portainer_password portainer_password_confirm json_payload
-                return 0
-                ;;
-            409)
-                log "Portainer admin account already initialized; skipping password prompt."
-                unset -v portainer_password portainer_password_confirm json_payload
-                return 0
-                ;;
-            400)
-                if [[ "$response_lower" == *"invalid password"* ]]; then
-                    echo "Portainer rejected the password: ${response_body}"
-                    echo "Please enter a new password that meets the requirements."
-                    continue
-                fi
-                ;;
-        esac
-
-        log_warning "Failed to initialize Portainer admin user (HTTP $http_code). Response: ${response_body:-<empty>}"
-        log_warning "Complete the Portainer setup manually by visiting https://<server-ip>:${PORTAINER_HTTPS_PORT}"
-        unset -v portainer_password portainer_password_confirm json_payload
-        return 0
     done
+
+    unset -v portainer_password portainer_password_confirm
+
+    if [[ -z "$portainer_hash" ]]; then
+        log_warning "Portainer password hash generation failed; skipping automatic configuration."
+        return 0
+    fi
+
+    if ! sudo docker volume ls --format '{{.Name}}' | grep -Fxq "$PORTAINER_VOLUME_NAME"; then
+        log "Creating Portainer data volume ($PORTAINER_VOLUME_NAME)..."
+        if ! sudo docker volume create "$PORTAINER_VOLUME_NAME" >/dev/null; then
+            log_error "Failed to create Portainer volume $PORTAINER_VOLUME_NAME"
+            exit 1
+        fi
+    fi
+
+    log "Stopping any existing Portainer container..."
+    sudo docker stop "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
+    sudo docker rm "$PORTAINER_CONTAINER_NAME" >/dev/null 2>&1 || true
+
+    log "Starting Portainer with the configured admin password..."
+    if ! sudo docker run -d \
+        --name "$PORTAINER_CONTAINER_NAME" \
+        --restart unless-stopped \
+        -p "${PORTAINER_HTTP_PORT}:9000" \
+        -p "${PORTAINER_HTTPS_PORT}:9443" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v "${PORTAINER_VOLUME_NAME}":/data \
+        "$PORTAINER_IMAGE" \
+        --admin-password "$portainer_hash" >/dev/null; then
+        log_error "Failed to recreate Portainer container with the provided admin password"
+        exit 1
+    fi
+
+    log "Portainer admin password configured successfully via container redeploy."
+    log "Access Portainer at https://<server-ip>:${PORTAINER_HTTPS_PORT}"
 }
 
 create_forge_user() {
@@ -660,7 +634,7 @@ configure_updates_cron
 
 create_forge_user
 install_docker
-prompt_portainer_admin_password
+configure_portainer_admin_password
 choose_server_type
 selected_type="$SELECTED_SERVER_TYPE"
 

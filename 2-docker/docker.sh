@@ -210,14 +210,19 @@ install_portainer() {
     fi
 
     log "Creating Portainer container..."
-    if ! sudo docker run -d \
-        --name "$PORTAINER_CONTAINER_NAME" \
-        --restart unless-stopped \
-        -p "${PORTAINER_HTTP_PORT}:9000" \
-        -p "${PORTAINER_HTTPS_PORT}:9443" \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -v "${PORTAINER_VOLUME_NAME}":/data \
-        "$PORTAINER_IMAGE" >/dev/null; then
+
+    local portainer_run_cmd=(
+        sudo docker run -d
+        --name "$PORTAINER_CONTAINER_NAME"
+        --restart unless-stopped
+        -p "${PORTAINER_HTTP_PORT}:9000"
+        -p "${PORTAINER_HTTPS_PORT}:9443"
+        -v /var/run/docker.sock:/var/run/docker.sock
+        -v "${PORTAINER_VOLUME_NAME}":/data
+        "$PORTAINER_IMAGE"
+    )
+
+    if ! "${portainer_run_cmd[@]}" >/dev/null; then
         log_error "Failed to start Portainer container"
         exit 1
     fi
