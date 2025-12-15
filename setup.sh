@@ -413,7 +413,7 @@ prompt_portainer_admin_password() {
     done
 
     local json_payload=""
-    if ! json_payload=$(python3 - <<'PY' <<<"$portainer_password"
+    if ! json_payload=$(printf '%s' "$portainer_password" | python3 - <<'PY'
 import json
 import sys
 
