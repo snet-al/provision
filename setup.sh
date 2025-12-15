@@ -31,6 +31,7 @@ readonly PORTAINER_IMAGE="portainer/portainer-ce:latest"
 readonly PORTAINER_PASSWORD_MIN_LENGTH=12
 readonly PORTAINER_PASSWORD_POLICY="Password must include at least one uppercase letter, one lowercase letter, and one number."
 DOCKER_PRESENT_BEFORE_INSTALL=false
+INSTALL_DOCKER_SELECTED=true
 INSTALL_PORTAINER_SELECTED=true
 
 # Error handling
@@ -164,6 +165,37 @@ ensure_script_permissions() {
     done
     
     log "Script permissions check completed"
+}
+
+prompt_docker_install_choice() {
+    echo
+    echo "Docker CE (with CLI and Compose) can be installed automatically."
+    local choice
+    read -rp "Do you want to install or update Docker CE on this server? (Y/n): " choice
+    if [[ "$choice" =~ ^[Nn]$ ]]; then
+        INSTALL_DOCKER_SELECTED=false
+        log "Docker installation disabled by user."
+    else
+        INSTALL_DOCKER_SELECTED=true
+        log "Docker installation enabled by user choice."
+    fi
+    echo
+}
+
+determine_docker_installation() {
+    if [[ -n "${INSTALL_DOCKER:-}" ]]; then
+        local normalized="${INSTALL_DOCKER,,}"
+        if [[ "$normalized" =~ ^(false|0|no|n)$ ]]; then
+            INSTALL_DOCKER_SELECTED=false
+            log "Docker installation disabled via INSTALL_DOCKER environment variable."
+        else
+            INSTALL_DOCKER_SELECTED=true
+            log "Docker installation enabled via INSTALL_DOCKER environment variable."
+        fi
+        return
+    fi
+
+    prompt_docker_install_choice
 }
 
 prompt_portainer_install_choice() {
@@ -354,6 +386,11 @@ apply_rate_limiting() {
 install_docker() {
     log "Ensuring Docker is installed (default)..."
     local docker_script="$DOCKER_DIR/docker.sh"
+
+    if [[ "$INSTALL_DOCKER_SELECTED" != true ]]; then
+        log "Skipping Docker installation per user selection."
+        return 0
+    fi
 
     if command -v docker >/dev/null 2>&1; then
         DOCKER_PRESENT_BEFORE_INSTALL=true
@@ -692,7 +729,13 @@ check_prerequisites
 install_basic_utilities
 configure_updates_cron
 
-determine_portainer_installation
+determine_docker_installation
+
+if [[ "$INSTALL_DOCKER_SELECTED" == true ]]; then
+    determine_portainer_installation
+else
+    INSTALL_PORTAINER_SELECTED=false
+fi
 
 create_forge_user
 install_docker
