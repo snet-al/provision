@@ -268,8 +268,8 @@ run_server_type_setup() {
     local setup_script="$PRIVATE_REPO_DIR/$server_folder/setup.sh"
 
     if [[ -x "$setup_script" ]]; then
-        log "Running server type setup script: $setup_script"
-        if ! sudo -u "$DEFAULT_USER" "$setup_script"; then
+        log "Running server type setup script: $setup_script with type '$type'"
+        if ! sudo -u "$DEFAULT_USER" "$setup_script" "$type"; then
             log_error "Server type setup script failed"
             exit 1
         fi
