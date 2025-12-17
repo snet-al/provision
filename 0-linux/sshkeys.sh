@@ -66,6 +66,58 @@ show_welcome() {
     echo
 }
 
+# Check for existing authorized keys and prompt user
+prompt_for_existing_keys() {
+    local auth_file="$HOME/.ssh/authorized_keys"
+
+    if [[ ! -s "$auth_file" ]]; then
+        return 0
+    fi
+
+    local existing_keys=()
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+
+        if [[ "$line" =~ ^#\ SSH\ key\ for\ (.+)$ ]]; then
+            existing_keys+=("${BASH_REMATCH[1]}")
+            continue
+        fi
+
+        if [[ "$line" =~ ^ssh- ]]; then
+            local key_comment
+            key_comment=$(echo "$line" | awk '{print $NF}')
+            if [[ -n "$key_comment" && "$key_comment" != "$line" ]]; then
+                existing_keys+=("$key_comment")
+            else
+                existing_keys+=("<unnamed key>")
+            fi
+        fi
+    done < "$auth_file"
+
+    if [[ ${#existing_keys[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}The following SSH keys/devices already have passwordless access:${NC}"
+    for key in "${existing_keys[@]}"; do
+        echo "  • $key"
+    done
+    echo
+
+    local add_more_choice
+    read -rp "Add another SSH key anyway? (y/N): " add_more_choice
+    echo
+
+    if [[ ! "$add_more_choice" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Skipping SSH key addition; existing access remains unchanged.${NC}"
+        log "User chose not to add a new SSH key because authorized keys already exist."
+        return 1
+    fi
+
+    log "Existing authorized keys detected; user opted to add another key."
+    return 0
+}
+
 # Show key format help
 show_key_help() {
     echo -e "${YELLOW}📋 SSH Key Format Help${NC}"
@@ -188,6 +240,10 @@ main() {
     log "Starting interactive SSH key addition..."
 
     show_welcome
+
+    if ! prompt_for_existing_keys; then
+        exit 0
+    fi
 
     # Get key name
     local key_name
