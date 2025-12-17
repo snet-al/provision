@@ -749,7 +749,15 @@ configure_updates_cron
 
 determine_docker_installation
 
-if [[ "$INSTALL_DOCKER_SELECTED" == true ]]; then
+docker_available_precheck=false
+if command -v docker >/dev/null 2>&1; then
+    docker_available_precheck=true
+fi
+
+if [[ "$INSTALL_DOCKER_SELECTED" == true || "$docker_available_precheck" == true ]]; then
+    if [[ "$INSTALL_DOCKER_SELECTED" != true && "$docker_available_precheck" == true ]]; then
+        log "Docker is already installed; Portainer management options are available."
+    fi
     determine_portainer_installation
     detect_portainer_presence
 else
@@ -759,9 +767,11 @@ fi
 create_forge_user
 install_docker
 
-if [[ "$INSTALL_DOCKER_SELECTED" == true && "$INSTALL_PORTAINER_SELECTED" == true ]]; then
-    if [[ "$PORTAINER_PRESENT_BEFORE_INSTALL" == true ]]; then
-        local reuse_portainer_choice=""
+if [[ "$INSTALL_PORTAINER_SELECTED" == true ]]; then
+    if ! command -v docker >/dev/null 2>&1; then
+        log_warning "Docker is not available; skipping Portainer configuration."
+    elif [[ "$PORTAINER_PRESENT_BEFORE_INSTALL" == true ]]; then
+        reuse_portainer_choice=""
         if read -rp "Existing Portainer installation detected. Reinstall and wipe data? (y/N): " -n 1 reuse_portainer_choice; then
             echo
             if [[ "$reuse_portainer_choice" =~ ^[Yy]$ ]]; then
@@ -776,7 +786,7 @@ if [[ "$INSTALL_DOCKER_SELECTED" == true && "$INSTALL_PORTAINER_SELECTED" == tru
     else
         configure_portainer_admin_password false
     fi
-elif [[ "$INSTALL_PORTAINER_SELECTED" != true ]]; then
+else
     log "Portainer installation skipped per user selection."
 fi
 
