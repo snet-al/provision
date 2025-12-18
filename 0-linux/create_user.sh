@@ -42,6 +42,25 @@ check_prerequisites() {
     fi
 }
 
+generate_ssh_key_if_missing() {
+    local username=$1
+    local ssh_dir="/home/$username/.ssh"
+    local key_path="$ssh_dir/id_ed25519"
+
+    if sudo -u "$username" test -f "$key_path"; then
+        log "SSH key already exists for user '$username' at $key_path"
+        return 0
+    fi
+
+    log "Generating ed25519 SSH key for user '$username'..."
+    if sudo -u "$username" ssh-keygen -t ed25519 -N "" -f "$key_path" >/dev/null; then
+        log "SSH key generated for user '$username'"
+    else
+        log_error "Failed to generate SSH key for user '$username'"
+        exit 1
+    fi
+}
+
 # Set default username from config if no argument provided
 USERNAME=${1:-$DEFAULT_USER}
 
@@ -128,6 +147,8 @@ else
     log "No existing authorized_keys found in root directory"
 fi
 
+generate_ssh_key_if_missing "$USERNAME"
+
 # Add user to docker group if docker is installed
 if command -v docker &>/dev/null; then
     log "Docker detected. Adding user '$USERNAME' to docker group..."
@@ -151,6 +172,7 @@ echo "✅ User creation completed successfully!"
 echo "👤 Username: $USERNAME"
 echo "🏠 Home directory: $USER_HOME"
 echo "🔑 SSH directory: $SSH_DIR"
+echo "🗝️ Default SSH key: $SSH_DIR/id_ed25519 (public key: $SSH_DIR/id_ed25519.pub)"
 echo
 echo "📋 Next steps:"
 echo "   1. Add SSH keys using: ./add_ssh_key.sh <key_name> '<public_key>'"
