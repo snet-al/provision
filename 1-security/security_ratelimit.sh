@@ -117,6 +117,7 @@ EOL
 sudo chmod +x /usr/local/bin/secure-service-config
 
 # Create documentation
+sudo mkdir -p /usr/local/share/doc
 sudo tee /usr/local/share/doc/service-security.md > /dev/null << 'EOL'
 # Service Security Configuration Guide
 
