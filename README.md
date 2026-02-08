@@ -79,7 +79,7 @@ sudo ./setup.sh
 1. Install basics: updates apt, adds universe, installs core utilities.
 2. Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.
 3. Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:snet-al/provision-servers.git`.
-4. Server type: prompts for desired server type and records it for the private repo.
+4. Server type: prompts for desired server type (basic, multi-deployment, docker-compose, agents) and records it for the private repo.
 5. Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.
 6. Optional security: prompts for hardening and rate limiting.
 7. Forge access: adds your SSH public key to `forge` for passwordless login.

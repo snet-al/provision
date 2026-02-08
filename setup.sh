@@ -320,15 +320,17 @@ choose_server_type() {
     log "Select the server type to provision:"
     echo "1) Basic server"
     echo "2) Multi-deployment server"
-    echo "3) Agents server"
+    echo "3) Docker Compose deployment server"
+    echo "4) Agents server"
     local choice
     while true; do
-        read -p "Enter choice [1-3]: " choice
+        read -p "Enter choice [1-4]: " choice
         case "$choice" in
             1) SELECTED_SERVER_TYPE="basic"; return 0 ;;
             2) SELECTED_SERVER_TYPE="multi_deployment"; return 0 ;;
-            3) SELECTED_SERVER_TYPE="agents"; return 0 ;;
-            *) echo "Invalid choice. Please enter 1, 2, or 3." ;;
+            3) SELECTED_SERVER_TYPE="docker_compose"; return 0 ;;
+            4) SELECTED_SERVER_TYPE="agents"; return 0 ;;
+            *) echo "Invalid choice. Please enter 1, 2, 3, or 4." ;;
         esac
     done
 }
@@ -347,6 +349,7 @@ get_server_type_folder() {
     local type="$1"
     case "$type" in
         multi_deployment) echo "deployment" ;;
+        docker_compose) echo "deployment-compose" ;;
         agents) echo "agents" ;;
         *) echo "" ;;
     esac
