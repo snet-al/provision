@@ -250,8 +250,14 @@ detect_portainer_presence() {
 install_basic_utilities() {
     log "Starting system package updates..."
 
+    if grep -q 'file:///cdrom' /etc/apt/sources.list 2>/dev/null; then
+        log "Disabling broken cdrom repository..."
+        sudo sed -i 's|^deb .*file:///cdrom|# &|' /etc/apt/sources.list
+    fi
+
     if ! sudo apt update; then
         log_error "Failed to update package lists"
+        log_error "If you see 'cdrom' errors, run: sudo sed -i 's|^deb .*file:///cdrom|# &|' /etc/apt/sources.list"
         exit 1
     fi
 
