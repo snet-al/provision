@@ -1,0 +1,7 @@
+profile: basic
+env:
+  ENABLE_MDE: "true"
+  MDE_MODE: active
+  MDE_HEALTHCHECK_ENABLED: "true"
+  MDE_ONBOARDING_ENABLED: "true"
+  MDE_ONBOARDING_SCRIPT: "/root/secure/mde/onboard.sh"

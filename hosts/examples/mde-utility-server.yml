@@ -1,0 +1,5 @@
+profile: multi_deployment
+env:
+  ENABLE_MDE: "true"
+  MDE_MODE: active
+  MDE_EXCLUSIONS_PATHS: "/var/lib/docker,/var/lib/containerd"

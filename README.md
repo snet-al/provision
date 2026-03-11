@@ -1,215 +1,216 @@
-# Ubuntu 24.04 LTS Server Provisioning Scripts
+# Bash-First Provisioning Framework (Ubuntu 24.04)
 
-A comprehensive collection of shell scripts for provisioning and securing Ubuntu 24.04 LTS servers with Docker, security hardening, and user management.
+This repository supports two execution styles through the same framework:
 
-## 🚀 Quick Start
+- **Interactive mode**: `sudo ./setup.sh`
+- **Config-first declarative mode**: CLI flags and host config files
+
+The project stays **bash-first** and does **not** require Ansible or Python runtime orchestration.
+
+## What Changed
+
+The provisioning logic is being refactored into Ansible-like layers:
+
+- `lib/` shared idempotent helpers and runtime framework
+- `tasks/` reusable provisioning units
+- `profiles/` task compositions
+- `inventory/` and `orchestrate.sh` for multi-host runs over SSH
+- `reports/` machine-readable JSON execution summaries
+- Interactive and non-interactive flows now share the same `lib/`, `tasks/`, and `profiles/` framework
+
+## Folder Structure
+
+```text
+.
+├── lib/
+│   ├── core.sh
+│   ├── logging.sh
+│   ├── ensure.sh
+│   ├── files.sh
+│   ├── services.sh
+│   ├── config.sh
+│   └── inventory.sh
+├── tasks/
+│   ├── 10-system/
+│   │   ├── base.sh
+│   │   └── unattended_upgrades.sh
+│   ├── 20-identity/
+│   │   └── user_forge.sh
+│   ├── 30-security/
+│   │   ├── ssh_hardening.sh
+│   │   ├── firewall.sh
+│   │   ├── fail2ban.sh
+│   │   └── microsoft_defender.sh
+│   ├── 40-container/
+│   │   ├── docker.sh
+│   │   └── portainer.sh
+│   └── 90-post/
+│       └── post_setup.sh
+├── profiles/
+│   ├── basic.sh
+│   ├── docker_host.sh
+│   ├── agents.sh
+│   └── multi_deployment.sh
+├── hosts/
+│   ├── basic.yml
+│   ├── docker_host.yml
+│   ├── agents.yml
+│   ├── multi_deployment.yml
+│   └── examples/
+├── inventory/
+│   ├── hosts.yml
+│   ├── group_vars/
+│   └── host_vars/
+├── docs/
+│   ├── microsoft-defender.md
+│   └── security-modules-architecture.md
+├── tests/
+├── reports/
+├── orchestrate.sh
+└── setup.sh
+```
+
+## Profiles
+
+- `basic` = base + user_forge + ssh_hardening + unattended_upgrades + firewall + fail2ban
+- `docker_host` = basic + docker + portainer + post_setup
+- `agents` = basic + docker + agent hooks placeholder + post_setup
+- `multi_deployment` = basic + docker + extension hooks placeholder + post_setup
+
+## Optional Security Agent: Microsoft Defender
+
+MDE support is available as an optional task module and is disabled by default.
+
+- Task: `tasks/30-security/microsoft_defender.sh`
+- Activation: `env.ENABLE_MDE=true`
+- Behavior: idempotent install/config/health checks
+- Kubernetes workers: explicit opt-in only (`ROLE_K8S_WORKER=true` + `ENABLE_MDE=true`)
+
+Detailed guide:
+
+- `docs/microsoft-defender.md`
+- `docs/security-modules-architecture.md`
+
+## Usage
+
+### 1) Interactive Mode
 
 ```bash
-# 1. Validate configuration (recommended)
-./0-linux/validate-config.sh
-
-# 2. (Optional) Run comprehensive tests
-./0-linux/test-provision.sh
-
-# 3. Run the main setup (interactive)
-#    - Installs basic utils
-#    - Configures daily unattended-upgrades (3:00 AM cron)
-#    - Shows forge user's SSH key (use it to grant access to the private repo)
-#    - Clones git@github.com:datafynow/provision.git as forge (retries until success)
-#    - Adds your SSH key to forge for passwordless login
 sudo ./setup.sh
-
-# 4. Validate the provisioned system
-./0-linux/validate-system.sh
 ```
 
-## 📋 Prerequisites
+This starts profile selection prompts and runs the same framework used by non-interactive mode.
 
-- **Ubuntu 24.04 LTS** server (fresh installation recommended)
-- **Root access** or user with sudo privileges
-- **Internet connection** for package downloads
-- **SSH public key** ready for secure access
-
-## 📁 Script Overview
-
-### Directory Layout
-
-- `0-linux/`: Core provisioning flow, validation scripts, and utilities (`setup.sh`, `validate-*`, etc.).
-- `1-security/`: Hardening utilities such as `security.sh` and `security_ratelimit.sh`.
-- `2-docker/`: Docker installation helpers, Portainer deployment, and proxy tooling (`docker.sh`, `configure-docker-proxy.sh`).
-- Repository root: Documentation plus the main entrypoint `setup.sh`.
-
-### Core Provisioning Scripts
-
-| Script                      | Location        | Purpose                                                 | User Required |
-| --------------------------- | --------------- | ------------------------------------------------------- | ------------- |
-| `setup.sh`                  | repository root | Main orchestration script with interactive flow         | root/sudo     |
-| `create_user.sh`            | `0-linux/`      | Creates forge user with sudo access                     | root/sudo     |
-| `add_ssh_key.sh`            | `0-linux/`      | Adds SSH keys to user accounts                          | target user   |
-| `sshkeys.sh`                | `0-linux/`      | Interactive SSH key management                          | target user   |
-| `after-setup.sh`            | `0-linux/`      | Post-setup cleanup and file organization                | root/sudo     |
-| `security.sh`               | `1-security/`   | Security hardening (firewall, fail2ban, etc.)           | root/sudo     |
-| `security_ratelimit.sh`     | `1-security/`   | Additional security measures                            | root/sudo     |
-| `docker.sh`                 | `2-docker/`     | Installs Docker CE, Compose, and Portainer CE dashboard | root/sudo     |
-| `configure-docker-proxy.sh` | `2-docker/`     | Optional Docker proxy settings                          | root/sudo     |
-
-### Validation & Testing Scripts
-
-| Script                       | Purpose                      | When to Use          |
-| ---------------------------- | ---------------------------- | -------------------- |
-| `0-linux/validate-config.sh` | Pre-provisioning validation  | Before running setup |
-| `0-linux/test-provision.sh`  | Comprehensive testing suite  | Before deployment    |
-| `0-linux/validate-system.sh` | Post-provisioning validation | After provisioning   |
-
-### Configuration Files
-
-| File                   | Purpose                        | Required |
-| ---------------------- | ------------------------------ | -------- |
-| `provision.conf`       | Default configuration settings | Yes      |
-| `provision.local.conf` | Local configuration overrides  | Optional |
-
-## 🐳 Docker & Portainer Dashboard
-
-- Running `sudo ./2-docker/docker.sh` installs Docker CE, Docker Compose, and automatically deploys **Portainer CE** for container management.
-- Portainer runs as container `portainer`, stores data inside the `portainer_data` volume, and exposes ports `8000` (edge agent) and `9443` (HTTPS UI).
-- After installation, browse to `https://<server-ip>:9443`, create the Portainer admin user, and connect to the local Docker instance (already mounted via `/var/run/docker.sock`).
-
-## 🧭 Provisioning Flow (interactive)
-
-1. Install basics: updates apt, adds universe, installs core utilities.
-2. Auto-updates: configures `unattended-upgrades` with a 3:00 AM daily cron.
-3. Repository access: shows the **forge user's** SSH public key; add it to `git@github.com:snet-al/provision-servers.git`.
-4. Server type: prompts for desired server type (basic, multi-deployment, docker-compose, agents) and records it for the private repo.
-5. Repo sync + handoff: auto-clones/pulls the private repo into `provision-private/` inside this repo (retries every 5s) and, if `provision-private/setup.sh` exists and is executable, runs it passing the selected server type.
-6. Optional security: prompts for hardening and rate limiting.
-7. Forge access: adds your SSH public key to `forge` for passwordless login.
-8. Post-copy: scripts are copied to `/home/forge/provision` with proper perms.
-
-## 🔒 Security Features
-
-### Firewall Configuration
-
-- **UFW (Uncomplicated Firewall)** with restrictive defaults
-- **SSH, HTTP, HTTPS** ports allowed
-- **SSH rate limiting** to prevent brute force attacks
-
-### SSH Hardening
-
-- **Root login disabled**
-- **Password authentication disabled**
-- **Key-based authentication only**
-- **Maximum 3 authentication attempts**
-
-### System Hardening
-
-- **Fail2ban** for intrusion prevention
-- **Automatic security updates**
-- **Audit logging** for system monitoring
-- **Secure shared memory** configuration
-- **System resource limits**
-
-### Service Security
-
-- **Database services** bound to localhost only
-- **SSL/TLS** enabled by default
-- **Protected mode** for Redis
-- **Secure transport** required for MySQL
-
-## 🛠️ Configuration
-
-### Configuration Files
-
-The provisioning scripts use a centralized configuration system:
-
-- **`provision.conf`** (at repository root) - Default configuration settings
-- **`provision.local.conf`** - Local overrides (optional, takes precedence)
-
-### Default Settings
-
-- **Default user**: `forge`
-- **SSH directory**: `/home/forge/.ssh`
-- **Scripts location**: `/home/forge/provision`
-- **Log file**: `/var/log/provision.log`
-- **Backup directory**: `/etc/provision-backups`
-- **Service binding**: `127.0.0.1` (localhost only)
-
-#### Configuration Validation
-
-Always validate your configuration before provisioning:
+### 2) Profile-Driven Non-Interactive Mode
 
 ```bash
-# Validate configuration
-./0-linux/validate-config.sh
-
-# This checks:
-# - Configuration file syntax
-# - Username format validation
-# - SSH port ranges
-# - Package availability
-# - System requirements
+sudo ./setup.sh --profile docker_host --non-interactive --apply
 ```
 
-## 🚨 Troubleshooting
-
-### Automated Diagnostics
-
-First, try the automated validation tools:
+### 3) Plan / Dry-Run Mode
 
 ```bash
-# Check if configuration is valid
-./0-linux/validate-config.sh
-
-# Run comprehensive tests
-./0-linux/test-provision.sh
-
-# Check if system is properly configured
-./0-linux/validate-system.sh
+sudo ./setup.sh --profile basic --non-interactive --plan
+sudo ./setup.sh --config ./hosts/basic.yml --plan
 ```
 
-These scripts will identify most common issues automatically.
+### 4) Declarative Host Config (YAML only)
 
-### Log Locations
-
-- **Provisioning logs**: `/var/log/provision.log` (centralized logging for all scripts)
-- **Test logs**: `/tmp/provision-test.log` (from test-provision.sh)
-- **System logs**: `/var/log/syslog`
-- **Authentication logs**: `/var/log/auth.log`
-- **Fail2ban logs**: `/var/log/fail2ban.log`
-- **Docker logs**: `journalctl -u docker.service`
-
-## 🔄 Maintenance
-
-### Regular Validation
+YAML configs require `yq`:
 
 ```bash
-# Run system validation regularly (weekly/monthly)
-./0-linux/validate-system.sh
-
-# Check for configuration drift
-./0-linux/validate-config.sh
-
-# Run comprehensive tests before major changes
-./0-linux/test-provision.sh
+sudo ./setup.sh --config ./hosts/basic.yml --apply --non-interactive
 ```
 
-### Regular Tasks
+### 5) Profile Baseline Config
+
+Each profile reads:
+
+- `hosts/<profile>.yml` (required baseline)
+- `hosts/<profile>.local.yml` (optional local override, ignored by git)
+
+Example:
 
 ```bash
-# Update system packages
-sudo apt update && sudo apt upgrade
-
-# Check security updates
-sudo unattended-upgrade --dry-run
-
-# Review fail2ban status
-sudo fail2ban-client status
-
-# Check disk usage
-df -h
-
-# Monitor system resources
-htop
-
-# Review provisioning logs
-tail -100 /var/log/provision.log
+sudo ./setup.sh --profile docker_host --non-interactive --apply
 ```
+
+## Config Precedence
+
+1. CLI arguments
+2. Per-host config file (`--config`)
+3. `hosts/<profile>.local.yml`
+4. `hosts/<profile>.yml`
+
+## Multi-Server Orchestration
+
+Provision from a laptop/control machine over SSH (no dedicated server):
+
+```bash
+./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts
+./orchestrate.sh --inventory inventory/hosts.yml --limit docker-01
+./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts --batch-size 2
+./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts --parallel 4
+./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts --plan
+```
+
+`orchestrate.sh` streams a repo snapshot to remote hosts, runs `setup.sh` remotely in non-interactive mode, and collects JSON reports.
+
+## Logging and Reports
+
+- Host log file: `/var/log/provision.log`
+- Local JSON report: `reports/<timestamp>/<hostname>.json`
+
+Example report:
+
+```json
+{
+  "host": "docker-01",
+  "profile": "docker_host",
+  "ok": 12,
+  "changed": 4,
+  "failed": 0,
+  "skipped": 3,
+  "duration_sec": 41
+}
+```
+
+At the end of each run, setup prints:
+
+- `OK`
+- `CHANGED`
+- `FAILED`
+- `SKIPPED`
+
+## Safety / Backups
+
+Critical file operations (for example SSH config updates) use backup helpers and keep backups under:
+
+- `BACKUP_DIR` from config if set
+- fallback `/etc/provision-backups`
+
+## Idempotency Notes
+
+Idempotency primitives live in `lib/ensure.sh` (`ensure_package`, `ensure_user`, `ensure_line_in_file`, `ensure_sshd_option`, `ensure_service_*`, etc.).
+
+Re-running the same config should result in mostly `ok`/`skipped`, with minimal `changed`.
+
+## Testing and Validation
+
+```bash
+make lint
+make test
+make validate
+make plan
+```
+
+- `lint`: shellcheck + shfmt (if installed)
+- `test`: core helper/profile tests
+
+## Migration Notes
+
+- Use `sudo ./setup.sh` for interactive provisioning with the new framework.
+- Use `--profile` and/or `--config` for deterministic automation.
+- YAML is the only supported config format.
+- Keep machine-local overrides in `hosts/<profile>.local.yml`.
+- For MDE examples see `hosts/examples/`.
