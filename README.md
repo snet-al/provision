@@ -198,14 +198,15 @@ Re-running the same config should result in mostly `ok`/`skipped`, with minimal 
 ## Testing and Validation
 
 ```bash
-make lint
-make test
-make validate
-make plan
+bash tests/test_mde.sh
+bash tests/test_ensure.sh
+bash tests/test_config.sh
+bash tests/test_inventory.sh
+bash tests/test_profiles.sh
+bash -n setup.sh orchestrate.sh lib/*.sh tasks/10-system/*.sh tasks/20-identity/*.sh tasks/30-security/*.sh tasks/40-container/*.sh tasks/90-post/*.sh profiles/*.sh tests/*.sh
 ```
 
-- `lint`: shellcheck + shfmt (if installed)
-- `test`: core helper/profile tests
+- `test_config.sh` requires `yq` for YAML config parsing checks.
 
 ## Migration Notes
 
