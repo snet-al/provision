@@ -191,6 +191,8 @@ Critical file operations (for example SSH config updates) use backup helpers and
 - `BACKUP_DIR` from config if set
 - fallback `/etc/provision-backups`
 
+Post-setup permission normalization is careful not to recursively chmod files inside user Git worktrees. Directory permissions and ownership are normalized, but regular file modes are left intact to avoid spurious Git mode changes after root-run provisioning.
+
 ## Idempotency Notes
 
 Idempotency primitives live in `lib/ensure.sh` (`ensure_package`, `ensure_user`, `ensure_line_in_file`, `ensure_sshd_option`, `ensure_service_*`, etc.).

@@ -20,6 +20,24 @@ provision_servers_key_file() {
   echo "/home/$DEFAULT_USER/.ssh/id_ed25519"
 }
 
+ensure_provision_servers_ssh_permissions() {
+  local key_file
+  local pub_file
+  local known_hosts
+
+  key_file="$(provision_servers_key_file)"
+  pub_file="${key_file}.pub"
+  known_hosts="/home/$DEFAULT_USER/.ssh/known_hosts"
+
+  ensure_directory "/home/$DEFAULT_USER/.ssh" "700" "$DEFAULT_USER:$DEFAULT_USER"
+  [[ -f "$key_file" ]] && ensure_file_mode "$key_file" "600"
+  [[ -f "$key_file" ]] && ensure_file_owner "$key_file" "$DEFAULT_USER:$DEFAULT_USER"
+  [[ -f "$pub_file" ]] && ensure_file_mode "$pub_file" "644"
+  [[ -f "$pub_file" ]] && ensure_file_owner "$pub_file" "$DEFAULT_USER:$DEFAULT_USER"
+  [[ -f "$known_hosts" ]] && ensure_file_mode "$known_hosts" "644"
+  [[ -f "$known_hosts" ]] && ensure_file_owner "$known_hosts" "$DEFAULT_USER:$DEFAULT_USER"
+}
+
 show_provision_servers_pubkey() {
   local pub_file
   pub_file="$(provision_servers_key_file).pub"
@@ -57,6 +75,8 @@ ensure_provision_servers_repo_access() {
     log_status "ok" "ensure_provision_servers_repo_access" "SSH key already present for $DEFAULT_USER"
   fi
 
+  ensure_provision_servers_ssh_permissions
+
   if is_plan_mode; then
     log_status "changed" "ensure_provision_servers_repo_access" "plan: would ensure github.com known_hosts entry"
     return 0
@@ -77,6 +97,8 @@ ensure_provision_servers_repo_access() {
     log_status "failed" "ensure_provision_servers_repo_access" "failed to add github.com to known_hosts"
     return 1
   fi
+
+  ensure_provision_servers_ssh_permissions
 }
 
 sync_provision_servers_repo_once() {
