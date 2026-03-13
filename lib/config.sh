@@ -95,7 +95,10 @@ load_host_config() {
 }
 
 apply_cli_overrides() {
-  [[ -n "${CLI_PROFILE:-}" ]] && PROVISION_PROFILE="$CLI_PROFILE"
+  if [[ -n "${CLI_PROFILE:-}" ]]; then
+    PROVISION_PROFILE="$CLI_PROFILE"
+  fi
+  return 0
 }
 
 validate_required_non_interactive() {
