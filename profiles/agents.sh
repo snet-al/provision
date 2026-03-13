@@ -3,6 +3,6 @@
 profile_agents() {
   profile_basic
   run_docker
-  log_status "skipped" "profile_agents" "agent hooks placeholder"
+  run_provision_servers_extension
   run_post_setup
 }

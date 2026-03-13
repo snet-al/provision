@@ -13,6 +13,7 @@ for f in \
   "$ROOT_DIR/tasks/30-security/microsoft_defender.sh" \
   "$ROOT_DIR/tasks/40-container/docker.sh" \
   "$ROOT_DIR/tasks/40-container/portainer.sh" \
+  "$ROOT_DIR/tasks/50-extensions/provision_servers.sh" \
   "$ROOT_DIR/tasks/90-post/post_setup.sh" \
   "$ROOT_DIR/profiles/basic.sh" \
   "$ROOT_DIR/profiles/docker_host.sh" \

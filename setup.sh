@@ -83,6 +83,7 @@ source "$ROOT_DIR/tasks/30-security/fail2ban.sh"
 source "$ROOT_DIR/tasks/30-security/microsoft_defender.sh"
 source "$ROOT_DIR/tasks/40-container/docker.sh"
 source "$ROOT_DIR/tasks/40-container/portainer.sh"
+source "$ROOT_DIR/tasks/50-extensions/provision_servers.sh"
 source "$ROOT_DIR/tasks/90-post/post_setup.sh"
 
 source "$ROOT_DIR/profiles/basic.sh"

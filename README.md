@@ -44,6 +44,8 @@ The provisioning logic is being refactored into Ansible-like layers:
 │   ├── 40-container/
 │   │   ├── docker.sh
 │   │   └── portainer.sh
+│   ├── 50-extensions/
+│   │   └── provision_servers.sh
 │   └── 90-post/
 │       └── post_setup.sh
 ├── profiles/
@@ -74,8 +76,8 @@ The provisioning logic is being refactored into Ansible-like layers:
 
 - `basic` = base + user_forge + ssh_hardening + unattended_upgrades + firewall + fail2ban
 - `docker_host` = basic + docker + portainer + post_setup
-- `agents` = basic + docker + agent hooks placeholder + post_setup
-- `multi_deployment` = basic + docker + extension hooks placeholder + post_setup
+- `agents` = basic + docker + `provision-servers` agent extension + post_setup
+- `multi_deployment` = basic + docker + `provision-servers` deployment extension + post_setup
 
 ## Optional Security Agent: Microsoft Defender
 
