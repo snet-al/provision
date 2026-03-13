@@ -5,6 +5,7 @@ run_base() {
   ensure_package ca-certificates
   ensure_package curl
   ensure_package git
+  ensure_package jq
   ensure_package rsync
   ensure_package software-properties-common
   ensure_package yq

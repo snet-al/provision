@@ -92,13 +92,24 @@ source "$ROOT_DIR/profiles/agents.sh"
 source "$ROOT_DIR/profiles/multi_deployment.sh"
 
 bootstrap_yq() {
-  if command -v yq >/dev/null 2>&1; then
+  if command -v yq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     return 0
   fi
 
-  echo "Bootstrapping required dependency: yq"
-  apt-get update -y >/dev/null
-  apt-get install -y yq >/dev/null
+  ensure_root
+  echo "Bootstrapping required dependencies: yq jq"
+  if ! apt-get update -y; then
+    echo "Failed to update apt metadata while installing yq/jq." >&2
+    exit 1
+  fi
+  if ! apt-get install -y yq jq; then
+    echo "Failed to install required dependencies: yq jq." >&2
+    exit 1
+  fi
+  if ! command -v yq >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+    echo "Dependency bootstrap incomplete: expected both yq and jq to be available." >&2
+    exit 1
+  fi
 }
 
 if [[ "$CLI_PLAN" == "true" ]]; then
@@ -162,6 +173,8 @@ fi
 ensure_root
 init_logging
 validate_required_non_interactive
+
+echo "Starting profile: $PROVISION_PROFILE (mode=$PROVISION_MODE)"
 
 run_profile() {
   case "$PROVISION_PROFILE" in
