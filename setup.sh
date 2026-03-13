@@ -91,6 +91,16 @@ source "$ROOT_DIR/profiles/docker_host.sh"
 source "$ROOT_DIR/profiles/agents.sh"
 source "$ROOT_DIR/profiles/multi_deployment.sh"
 
+bootstrap_yq() {
+  if command -v yq >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Bootstrapping required dependency: yq"
+  apt-get update -y >/dev/null
+  apt-get install -y yq >/dev/null
+}
+
 if [[ "$CLI_PLAN" == "true" ]]; then
   PROVISION_MODE="plan"
 else
@@ -136,6 +146,7 @@ if [[ -n "$CLI_CONFIG" && -z "$CLI_PROFILE" ]]; then
   fi
 fi
 
+bootstrap_yq
 load_profile_config "$PROVISION_PROFILE"
 
 if [[ -n "$CLI_CONFIG" ]]; then

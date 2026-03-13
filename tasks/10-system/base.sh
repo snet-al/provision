@@ -7,6 +7,7 @@ run_base() {
   ensure_package git
   ensure_package rsync
   ensure_package software-properties-common
+  ensure_package yq
 
   if [[ -n "${SERVER_TIMEZONE:-}" ]]; then
     local current_tz
