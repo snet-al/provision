@@ -93,23 +93,25 @@ source "$ROOT_DIR/profiles/multi_deployment.sh"
 
 bootstrap_yq() {
   if command -v yq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    log_info "Required dependencies already available: yq jq"
     return 0
   fi
 
   ensure_root
-  echo "Bootstrapping required dependencies: yq jq"
+  log_info "Bootstrapping required dependencies: yq jq"
   if ! apt-get update -y; then
-    echo "Failed to update apt metadata while installing yq/jq." >&2
+    log_error "Failed to update apt metadata while installing yq/jq."
     exit 1
   fi
   if ! apt-get install -y yq jq; then
-    echo "Failed to install required dependencies: yq jq." >&2
+    log_error "Failed to install required dependencies: yq jq."
     exit 1
   fi
   if ! command -v yq >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-    echo "Dependency bootstrap incomplete: expected both yq and jq to be available." >&2
+    log_error "Dependency bootstrap incomplete: expected both yq and jq to be available."
     exit 1
   fi
+  log_info "Dependency bootstrap complete: yq jq"
 }
 
 if [[ "$CLI_PLAN" == "true" ]]; then
@@ -150,7 +152,12 @@ if [[ "$INTERACTIVE_DEFAULT" == "true" ]]; then
   fi
 fi
 
+ensure_root
+init_logging
+trap 'log_error "Setup aborted unexpectedly near line $LINENO"' ERR
+
 if [[ -n "$CLI_CONFIG" && -z "$CLI_PROFILE" ]]; then
+  bootstrap_yq
   detected_profile="$(detect_profile_from_host_config "$CLI_CONFIG")"
   if [[ -n "$detected_profile" ]]; then
     PROVISION_PROFILE="$detected_profile"
@@ -158,9 +165,11 @@ if [[ -n "$CLI_CONFIG" && -z "$CLI_PROFILE" ]]; then
 fi
 
 bootstrap_yq
+log_info "Loading profile config for $PROVISION_PROFILE"
 load_profile_config "$PROVISION_PROFILE"
 
 if [[ -n "$CLI_CONFIG" ]]; then
+  log_info "Loading host config from $CLI_CONFIG"
   load_host_config "$CLI_CONFIG"
 fi
 
@@ -170,8 +179,6 @@ if [[ -n "${SERVER_HOSTNAME:-}" ]]; then
   PROVISION_HOSTNAME="$SERVER_HOSTNAME"
 fi
 
-ensure_root
-init_logging
 validate_required_non_interactive
 
 echo "Starting profile: $PROVISION_PROFILE (mode=$PROVISION_MODE)"
