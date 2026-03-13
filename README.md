@@ -92,6 +92,7 @@ Detailed guide:
 
 - `docs/microsoft-defender.md`
 - `docs/security-modules-architecture.md`
+- `docs/profiles-and-inventory.md`
 
 ## Usage
 
