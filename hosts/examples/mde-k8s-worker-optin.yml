@@ -1,5 +1,5 @@
 profile: agents
 env:
-  ROLE_K8S_WORKER: "true"
-  ENABLE_MDE: "true"
+  ROLE_K8S_WORKER: 'true'
+  ENABLE_MDE: 'true'
   MDE_MODE: active

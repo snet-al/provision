@@ -15,7 +15,7 @@ show_help() {
   cat <<USAGE
 Usage:
   sudo ./setup.sh                            # interactive mode
-  sudo ./setup.sh --profile docker_host --non-interactive --apply
+  sudo ./setup.sh --profile docker_host --non-interactive --apply #the docker_host profile is the default profile becase we have everything on docker
   sudo ./setup.sh --config ./hosts/basic.yml --plan
 
 Options:

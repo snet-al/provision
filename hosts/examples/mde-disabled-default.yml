@@ -1,3 +1,3 @@
 profile: basic
 env:
-  ENABLE_MDE: "false"
+  ENABLE_MDE: 'false'
