@@ -3,11 +3,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HANDOFF_COMPLETE=false
 
 CLI_PROFILE=""
 CLI_CONFIG=""
 CLI_NON_INTERACTIVE=false
-CLI_PLAN=false
 CLI_APPLY=false
 INTERACTIVE_DEFAULT=false
 
@@ -16,14 +16,13 @@ show_help() {
 Usage:
   sudo ./setup.sh                            # interactive mode
   sudo ./setup.sh --profile docker_host --non-interactive --apply #the docker_host profile is the default profile becase we have everything on docker
-  sudo ./setup.sh --config ./hosts/basic.yml --plan
+  sudo ./setup.sh --config ./hosts/basic.yml --apply
 
 Options:
   --profile <name>         Profile to run: basic|docker_host|agents|multi_deployment
   --config <path>          Host config file (.yml/.yaml)
   --non-interactive        Do not prompt; fail on missing required values
-  --plan                   Dry-run mode (best effort)
-  --apply                  Apply changes (default when using flags)
+  --apply                  Apply changes
   -h, --help               Show help
 USAGE
 }
@@ -42,12 +41,12 @@ while [[ $# -gt 0 ]]; do
       CLI_NON_INTERACTIVE=true
       shift
       ;;
-    --plan)
-      CLI_PLAN=true
-      shift
-      ;;
     --apply)
       CLI_APPLY=true
+      shift
+      ;;
+    --handoff)
+      HANDOFF_COMPLETE=true
       shift
       ;;
     -h|--help)
@@ -63,7 +62,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # No flags means interactive mode with new framework.
-if [[ -z "$CLI_PROFILE" && -z "$CLI_CONFIG" && "$CLI_NON_INTERACTIVE" == "false" && "$CLI_PLAN" == "false" && "$CLI_APPLY" == "false" ]]; then
+if [[ -z "$CLI_PROFILE" && -z "$CLI_CONFIG" && "$CLI_NON_INTERACTIVE" == "false" && "$CLI_APPLY" == "false" ]]; then
   INTERACTIVE_DEFAULT=true
 fi
 
@@ -91,6 +90,60 @@ source "$ROOT_DIR/profiles/docker_host.sh"
 source "$ROOT_DIR/profiles/agents.sh"
 source "$ROOT_DIR/profiles/multi_deployment.sh"
 
+target_user_repo() {
+  echo "/home/$DEFAULT_USER/provision"
+}
+
+sync_repo_for_handoff() {
+  local target_repo
+  target_repo="$(target_user_repo)"
+
+  if [[ "$ROOT_DIR" == "$target_repo" ]]; then
+    log_info "Already running from handoff workspace $target_repo"
+    return 0
+  fi
+
+  log_info "Syncing repository to $target_repo for handoff"
+  mkdir -p "$target_repo"
+  chown "$DEFAULT_USER:$DEFAULT_USER" "$target_repo"
+  chmod 750 "$target_repo"
+
+  if rsync -a --delete --exclude "provision-servers/" "$ROOT_DIR/" "$target_repo/"; then
+    chown -R "$DEFAULT_USER:$DEFAULT_USER" "$target_repo"
+    log_info "Repository synced to $target_repo"
+    return 0
+  fi
+
+  log_error "Failed to sync repository to $target_repo"
+  return 1
+}
+
+handoff_to_user_repo() {
+  local target_repo
+  local handoff_args=("--handoff" "--profile" "$PROVISION_PROFILE")
+  target_repo="$(target_user_repo)"
+
+  if [[ "$HANDOFF_COMPLETE" == "true" ]]; then
+    log_info "Handoff already complete; continuing from $ROOT_DIR"
+    return 0
+  fi
+
+  if [[ "$ROOT_DIR" == "$target_repo" ]]; then
+    log_info "Already executing from target workspace $target_repo"
+    return 0
+  fi
+
+  ensure_forge_workspace_ready
+  sync_repo_for_handoff
+
+  handoff_args+=("--apply")
+  [[ "$PROVISION_NON_INTERACTIVE" == "true" ]] && handoff_args+=("--non-interactive")
+  [[ -n "$CLI_CONFIG" ]] && handoff_args+=("--config" "$CLI_CONFIG")
+
+  log_info "Re-launching setup from $target_repo"
+  exec "$target_repo/setup.sh" "${handoff_args[@]}"
+}
+
 bootstrap_yq() {
   if command -v yq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     log_info "Required dependencies already available: yq jq"
@@ -114,11 +167,7 @@ bootstrap_yq() {
   log_info "Dependency bootstrap complete: yq jq"
 }
 
-if [[ "$CLI_PLAN" == "true" ]]; then
-  PROVISION_MODE="plan"
-else
-  PROVISION_MODE="apply"
-fi
+PROVISION_MODE="apply"
 
 if [[ "$CLI_NON_INTERACTIVE" == "true" ]]; then
   PROVISION_NON_INTERACTIVE="true"
@@ -143,13 +192,6 @@ if [[ "$INTERACTIVE_DEFAULT" == "true" ]]; then
     4) PROVISION_PROFILE="multi_deployment" ;;
     *) echo "Invalid choice"; exit 1 ;;
   esac
-
-  read -rp "Run in plan mode? (y/N): " _plan_choice
-  if [[ "${_plan_choice:-n}" =~ ^[Yy]$ ]]; then
-    PROVISION_MODE="plan"
-  else
-    PROVISION_MODE="apply"
-  fi
 fi
 
 ensure_root
@@ -180,6 +222,7 @@ if [[ -n "${SERVER_HOSTNAME:-}" ]]; then
 fi
 
 validate_required_non_interactive
+handoff_to_user_repo
 
 echo "Starting profile: $PROVISION_PROFILE (mode=$PROVISION_MODE)"
 
@@ -201,6 +244,8 @@ if run_profile; then
 else
   log_status "failed" "setup" "profile execution failed"
 fi
+
+run_post_setup
 
 report_dir="$ROOT_DIR/reports/$(date +%Y%m%d_%H%M%S)"
 report_file="$report_dir/${PROVISION_HOSTNAME}.json"

@@ -11,20 +11,17 @@ INV_FILE=""
 LIMIT=""
 BATCH_SIZE=0
 PARALLEL=1
-PLAN=false
 
 usage() {
   cat <<USAGE
 Usage:
   ./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts
-  ./orchestrate.sh --inventory inventory/hosts.yml --limit docker-01 --plan
 
 Options:
   --inventory <file>   Inventory file (.yml/.yaml with yq, or .json)
   --limit <target>     Group name or host name
   --batch-size <n>     Process hosts in batches
   --parallel <n>       Parallel workers
-  --plan               Run remote setup in plan mode
 USAGE
 }
 
@@ -34,7 +31,6 @@ while [[ $# -gt 0 ]]; do
     --limit) LIMIT="$2"; shift 2 ;;
     --batch-size) BATCH_SIZE="$2"; shift 2 ;;
     --parallel) PARALLEL="$2"; shift 2 ;;
-    --plan) PLAN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1"; usage; exit 1 ;;
   esac
@@ -60,9 +56,6 @@ run_remote() {
   local profile="$4"
 
   local remote_args=("--profile" "$profile" "--non-interactive" "--apply")
-  if [[ "$PLAN" == "true" ]]; then
-    remote_args=("--profile" "$profile" "--non-interactive" "--plan")
-  fi
 
   local remote_dir="/tmp/provision-run-${name}-$$"
   echo "[$name] Syncing repository to $user@$host:$remote_dir"

@@ -21,5 +21,5 @@ normalize_provision_workspace_permissions() {
 run_post_setup() {
   log_info "Running task: post_setup"
   normalize_provision_workspace_permissions
-  log_status "ok" "run_post_setup" "post-setup workspace permissions ensured without changing tracked file modes"
+  log_status "ok" "run_post_setup" "forge workspace permissions ensured without changing tracked file modes"
 }

@@ -109,14 +109,7 @@ This starts profile selection prompts and runs the same framework used by non-in
 sudo ./setup.sh --profile docker_host --non-interactive --apply
 ```
 
-### 3) Plan / Dry-Run Mode
-
-```bash
-sudo ./setup.sh --profile basic --non-interactive --plan
-sudo ./setup.sh --config ./hosts/basic.yml --plan
-```
-
-### 4) Declarative Host Config (YAML only)
+### 3) Declarative Host Config (YAML only)
 
 YAML configs require `yq`:
 
@@ -124,7 +117,7 @@ YAML configs require `yq`:
 sudo ./setup.sh --config ./hosts/basic.yml --apply --non-interactive
 ```
 
-### 5) Profile Baseline Config
+### 4) Profile Baseline Config
 
 Each profile reads:
 
@@ -153,7 +146,6 @@ Provision from a laptop/control machine over SSH (no dedicated server):
 ./orchestrate.sh --inventory inventory/hosts.yml --limit docker-01
 ./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts --batch-size 2
 ./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts --parallel 4
-./orchestrate.sh --inventory inventory/hosts.yml --limit docker_hosts --plan
 ```
 
 `orchestrate.sh` streams a repo snapshot to remote hosts, runs `setup.sh` remotely in non-interactive mode, and collects JSON reports.
