@@ -197,5 +197,11 @@ Execution summary:
 SUMMARY
 
 if [[ "$SUMMARY_FAILED" -gt 0 ]]; then
+  echo
+  echo "Provisioning finished with failures."
   exit 1
 fi
+
+echo
+echo "Provisioning completed successfully."
+echo "Done."
