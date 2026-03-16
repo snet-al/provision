@@ -12,6 +12,54 @@ ensure_authorized_keys_file() {
   chmod 600 "$auth_file"
 }
 
+forge_password_is_set() {
+  local status
+  status="$(passwd -S "$DEFAULT_USER" 2>/dev/null | awk '{print $2}' || true)"
+  [[ "$status" == "P" ]]
+}
+
+set_forge_password() {
+  local password="$1"
+  printf '%s:%s\n' "$DEFAULT_USER" "$password" | chpasswd
+}
+
+prompt_forge_password_if_needed() {
+  local password=""
+  local confirm=""
+
+  if forge_password_is_set; then
+    log_status "ok" "prompt_forge_password_if_needed" "password already set for $DEFAULT_USER"
+    return 0
+  fi
+
+  if [[ "${PROVISION_NON_INTERACTIVE:-false}" == "true" ]]; then
+    log_status "failed" "prompt_forge_password_if_needed" "non-interactive mode cannot prompt for a password for $DEFAULT_USER"
+    return 1
+  fi
+
+  while true; do
+    echo
+    read -rsp "Set password for $DEFAULT_USER: " password
+    echo
+    read -rsp "Confirm password for $DEFAULT_USER: " confirm
+    echo
+
+    if [[ -z "$password" ]]; then
+      echo "Password cannot be empty."
+      continue
+    fi
+
+    if [[ "$password" != "$confirm" ]]; then
+      echo "Passwords do not match."
+      continue
+    fi
+
+    set_forge_password "$password"
+    log_status "changed" "prompt_forge_password_if_needed" "password set for $DEFAULT_USER"
+    return 0
+  done
+}
+
 ensure_forge_workspace_ready() {
   log_info "Preparing forge workspace prerequisites for $DEFAULT_USER"
   ensure_user "$DEFAULT_USER"
@@ -65,6 +113,7 @@ run_user_forge() {
   ensure_group_exists sudo
   ensure_user_in_group "$DEFAULT_USER" sudo
   ensure_directory "/home/$DEFAULT_USER/.ssh" "700" "$DEFAULT_USER:$DEFAULT_USER"
+  prompt_forge_password_if_needed
 
   local auth_file="/home/$DEFAULT_USER/.ssh/authorized_keys"
   if [[ "${#USER_SSH_KEYS[@]}" -eq 0 ]]; then

@@ -103,6 +103,8 @@ sudo ./setup.sh
 
 This starts profile selection prompts and runs the same framework used by non-interactive mode.
 
+Interactive runs now require a real password for `DEFAULT_USER` (normally `forge`) so the account can use `sudo` after login. If the user does not already have a password, setup prompts for one securely during the identity task. SSH public keys are still prompted/configured separately.
+
 ### 2) Profile-Driven Non-Interactive Mode
 
 ```bash
@@ -116,6 +118,8 @@ YAML configs require `yq`:
 ```bash
 sudo ./setup.sh --config ./hosts/basic.yml --apply --non-interactive
 ```
+
+Non-interactive runs cannot prompt for the `forge` password. If the target user does not already have a password set, setup now fails rather than leaving the user passwordless.
 
 ### 4) Profile Baseline Config
 
