@@ -1,0 +1,47 @@
+env:
+  DEFAULT_USER: forge
+  LOG_FILE: /var/log/provision.log
+  BACKUP_DIR: /etc/provision-backups
+
+  SSH_PORT: '22'
+  SSH_MAX_AUTH_TRIES: '3'
+  SSH_PERMIT_ROOT_LOGIN: 'no'
+  SSH_PASSWORD_AUTH: 'no'
+  SSH_X11_FORWARDING: 'no'
+
+  UFW_DEFAULT_INCOMING: deny
+  UFW_DEFAULT_OUTGOING: allow
+  UFW_ALLOWED_SERVICES: 'ssh http https'
+  UFW_ALLOWED_PORTS: '22 80 443'
+
+  FAIL2BAN_SSH_MAXRETRY: '3'
+  FAIL2BAN_SSH_BANTIME: 1h
+  FAIL2BAN_SSH_FINDTIME: 10m
+
+  BASIC_PACKAGES: 'ca-certificates vim git jq net-tools libfuse2 htop tmux curl wget unzip rsync software-properties-common yq'
+  SECURITY_PACKAGES: 'ufw fail2ban unattended-upgrades apt-listchanges logwatch auditd rkhunter'
+
+  DOCKER_GPG_URL: https://download.docker.com/linux/ubuntu/gpg
+  DOCKER_PACKAGES: 'docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin'
+  PORTAINER_PULL_IMAGE: 'false'
+
+  ENABLE_FAIL2BAN: 'true'
+  ENABLE_DOCKER: 'true'
+  ENABLE_PORTAINER: 'true'
+
+  # Microsoft Defender for Endpoint (optional)
+  ENABLE_MDE: 'false'
+  MDE_MODE: active
+  MDE_ONBOARDING_ENABLED: 'false'
+  MDE_PACKAGE_STATE: present
+  MDE_HEALTHCHECK_ENABLED: 'true'
+  MDE_ALLOW_PASSIVE_MODE: 'false'
+  MDE_FAIL_ON_UNHEALTHY: 'false'
+  MDE_TAGS: ''
+  MDE_EXCLUSIONS_PATHS: ''
+  MDE_EXCLUSIONS_PROCESSES: ''
+  MDE_EXCLUSIONS_EXTENSIONS: ''
+  MDE_ONBOARDING_SCRIPT: ''
+  MDE_ONBOARDING_COMMAND: ''
+  # Kubernetes worker nodes are explicitly opt-in for MDE.
+  ROLE_K8S_WORKER: 'false'

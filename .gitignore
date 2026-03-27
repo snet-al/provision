@@ -10,4 +10,5 @@ servers
 
 
 
-provision.local.conf
+hosts/*.local.yml
+reports/
