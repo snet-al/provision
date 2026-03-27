@@ -17,8 +17,8 @@ for f in \
   "$ROOT_DIR/tasks/90-post/post_setup.sh" \
   "$ROOT_DIR/profiles/basic.sh" \
   "$ROOT_DIR/profiles/docker_host.sh" \
-  "$ROOT_DIR/profiles/agents.sh" \
-  "$ROOT_DIR/profiles/multi_deployment.sh"; do
+  "$ROOT_DIR/profiles/multi_deployment.sh" \
+  "$ROOT_DIR/profiles/deployment_compose.sh"; do
   bash -n "$f"
 done
 

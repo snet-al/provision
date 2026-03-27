@@ -19,7 +19,7 @@ Usage:
   sudo ./setup.sh --config ./hosts/basic.yml --apply
 
 Options:
-  --profile <name>         Profile to run: basic|docker_host|agents|multi_deployment
+  --profile <name>         Profile to run: basic|docker_host|multi_deployment|deployment_compose
   --config <path>          Host config file (.yml/.yaml)
   --non-interactive        Do not prompt; fail on missing required values
   --apply                  Apply changes
@@ -87,8 +87,8 @@ source "$ROOT_DIR/tasks/90-post/post_setup.sh"
 
 source "$ROOT_DIR/profiles/basic.sh"
 source "$ROOT_DIR/profiles/docker_host.sh"
-source "$ROOT_DIR/profiles/agents.sh"
 source "$ROOT_DIR/profiles/multi_deployment.sh"
+source "$ROOT_DIR/profiles/deployment_compose.sh"
 
 target_user_repo() {
   echo "/home/$DEFAULT_USER/provision"
@@ -182,14 +182,14 @@ if [[ "$INTERACTIVE_DEFAULT" == "true" ]]; then
   echo "Select provisioning profile:"
   echo "1) basic"
   echo "2) docker_host"
-  echo "3) agents"
-  echo "4) multi_deployment"
+  echo "3) multi_deployment"
+  echo "4) deployment_compose"
   read -rp "Enter choice [1-4, default 2]: " _profile_choice
   case "${_profile_choice:-2}" in
     1) PROVISION_PROFILE="basic" ;;
     2) PROVISION_PROFILE="docker_host" ;;
-    3) PROVISION_PROFILE="agents" ;;
-    4) PROVISION_PROFILE="multi_deployment" ;;
+    3) PROVISION_PROFILE="multi_deployment" ;;
+    4) PROVISION_PROFILE="deployment_compose" ;;
     *) echo "Invalid choice"; exit 1 ;;
   esac
 fi
@@ -230,8 +230,8 @@ run_profile() {
   case "$PROVISION_PROFILE" in
     basic) profile_basic ;;
     docker_host) profile_docker_host ;;
-    agents) profile_agents ;;
     multi_deployment) profile_multi_deployment ;;
+    deployment_compose) profile_deployment_compose ;;
     *)
       log_error "Unknown profile: $PROVISION_PROFILE"
       exit 1

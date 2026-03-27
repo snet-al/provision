@@ -10,8 +10,8 @@ provision_servers_repo_url() {
 
 provision_servers_profile_folder() {
   case "${1:-}" in
-    agents) echo "agents" ;;
     multi_deployment) echo "deployment" ;;
+    deployment_compose) echo "deployment-compose" ;;
     *) echo "" ;;
   esac
 }
