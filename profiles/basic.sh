@@ -3,6 +3,7 @@
 profile_basic() {
   run_base
   run_user_forge
+  run_shell_tools
   run_ssh_hardening
   run_unattended_upgrades
   run_firewall
