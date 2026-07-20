@@ -74,6 +74,7 @@ source "$ROOT_DIR/lib/ensure.sh"
 source "$ROOT_DIR/lib/config.sh"
 
 source "$ROOT_DIR/tasks/10-system/base.sh"
+source "$ROOT_DIR/tasks/10-system/shell_tools.sh"
 source "$ROOT_DIR/tasks/20-identity/user_forge.sh"
 source "$ROOT_DIR/tasks/30-security/ssh_hardening.sh"
 source "$ROOT_DIR/tasks/10-system/unattended_upgrades.sh"

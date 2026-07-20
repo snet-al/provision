@@ -33,6 +33,7 @@ The provisioning logic is being refactored into Ansible-like layers:
 ├── tasks/
 │   ├── 10-system/
 │   │   ├── base.sh
+│   │   ├── shell_tools.sh
 │   │   └── unattended_upgrades.sh
 │   ├── 20-identity/
 │   │   └── user_forge.sh
@@ -74,7 +75,7 @@ The provisioning logic is being refactored into Ansible-like layers:
 
 ## Profiles
 
-- `basic` = base + user_forge + ssh_hardening + unattended_upgrades + firewall + fail2ban
+- `basic` = base + user_forge + shell_tools + ssh_hardening + unattended_upgrades + firewall + fail2ban
 - `docker_host` = basic + docker + portainer + post_setup
 - `agents` = basic + docker + `provision-servers` agent extension + post_setup
 - `multi_deployment` = basic + docker + `provision-servers` deployment extension + post_setup
@@ -206,6 +207,8 @@ bash tests/test_inventory.sh
 bash tests/test_profiles.sh
 bash -n setup.sh orchestrate.sh lib/*.sh tasks/10-system/*.sh tasks/20-identity/*.sh tasks/30-security/*.sh tasks/40-container/*.sh tasks/90-post/*.sh profiles/*.sh tests/*.sh
 ```
+
+`shell_tools` installs `fzf` (CTRL-R fuzzy history) and `zoxide` (`z` directory jumper), and wires both into `forge` / `root` / skel bashrc.
 
 - `test_config.sh` requires `yq` for YAML config parsing checks.
 

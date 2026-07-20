@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 for f in \
   "$ROOT_DIR/tasks/10-system/base.sh" \
+  "$ROOT_DIR/tasks/10-system/shell_tools.sh" \
   "$ROOT_DIR/tasks/20-identity/user_forge.sh" \
   "$ROOT_DIR/tasks/30-security/ssh_hardening.sh" \
   "$ROOT_DIR/tasks/10-system/unattended_upgrades.sh" \

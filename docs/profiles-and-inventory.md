@@ -12,6 +12,7 @@ The foundation profile. Included by every other profile.
 |---|---|
 | `run_base` | Installs core packages (`ca-certificates`, `curl`, `git`, `rsync`, `software-properties-common`), sets timezone |
 | `run_user_forge` | Creates `DEFAULT_USER`, adds them to `sudo`, provisions `~/.ssh/authorized_keys` |
+| `run_shell_tools` | Installs `fzf` + `zoxide` and wires CTRL-R / `z` into forge, root, and skel bashrc |
 | `run_ssh_hardening` | Locks down sshd: port, root login, password auth, X11, max auth tries |
 | `run_unattended_upgrades` | Enables automatic security/update patches via APT, schedules daily cron at 03:00 |
 | `run_firewall` | Configures `ufw`: default deny-incoming / allow-outgoing, opens ports 22/80/443 |
@@ -179,6 +180,22 @@ Bootstraps the minimum viable package set and system clock.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SERVER_TIMEZONE` | _(unset)_ | Target timezone, e.g. `Europe/Tirane`. Skipped if empty |
+
+---
+
+### `10-system/shell_tools.sh` — `run_shell_tools`
+
+Installs interactive shell productivity tools matching a typical admin workstation.
+
+**What it does**
+- Installs `fzf` (fuzzy finder; CTRL-R history search UI) and `zoxide` (smart `cd` via `z`)
+- Appends a managed `# provision:shell-tools` block to:
+  - `/home/$DEFAULT_USER/.bashrc`
+  - `/root/.bashrc`
+  - `/etc/skel/.bashrc` (so future users inherit the same setup)
+- Configures larger shared bash history so CTRL-R search stays useful
+
+No config variables — always applied as part of `basic`.
 
 ---
 
