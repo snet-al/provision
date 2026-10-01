@@ -76,9 +76,14 @@ load_host_config_yaml() {
   ufw_allow="$(yq -r '.security.ufw.allow // [] | join(" ")' "$cfg")"
   _set_if_present UFW_ALLOWED_PORTS "$ufw_allow"
 
-  _set_if_present ENABLE_FAIL2BAN "$(yq -r '.security.fail2ban // ""' "$cfg")"
-  _set_if_present ENABLE_DOCKER "$(yq -r '.docker.enabled // ""' "$cfg")"
-  _set_if_present ENABLE_PORTAINER "$(yq -r '.docker.portainer // ""' "$cfg")"
+  # No `// ""` on toggles: it treats false as missing, so `false` could never disable anything.
+  _set_if_present ENABLE_FAIL2BAN "$(yq -r '.security.fail2ban' "$cfg")"
+  _set_if_present ENABLE_DOCKER "$(yq -r '.docker.enabled' "$cfg")"
+  _set_if_present ENABLE_PORTAINER "$(yq -r '.docker.portainer' "$cfg")"
+  _set_if_present ENABLE_SMTP "$(yq -r '.docker.smtp' "$cfg")"
+  _set_if_present SMTP_DOMAIN "$(yq -r '.smtp.domain // ""' "$cfg")"
+  _set_if_present SMTP_HOSTNAME "$(yq -r '.smtp.hostname // ""' "$cfg")"
+  _set_if_present SMTP_RELAY_HOST "$(yq -r '.smtp.relay_host // ""' "$cfg")"
 
   mapfile -t USER_SSH_KEYS < <(yq -r '.users[0].ssh_keys[]? // empty' "$cfg")
 }

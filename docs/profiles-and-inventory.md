@@ -24,12 +24,13 @@ Config baseline: `hosts/basic.yml`
 
 ### `docker_host`
 
-Extends `basic` with a Docker runtime and Portainer UI.
+Extends `basic` with a Docker runtime, Portainer UI and a send-only SMTP relay.
 
 ```
 profile_basic
   → run_docker
   → run_portainer
+  → run_smtp
   → run_post_setup
 ```
 
@@ -37,9 +38,10 @@ profile_basic
 |---|---|
 | `run_docker` | Installs Docker CE + CLI, containerd, buildx, compose plugin; adds user to `docker` group |
 | `run_portainer` | Deploys Portainer CE container on ports 9000/9443; detects and reconciles config drift |
+| `run_smtp` | Builds and runs the Postfix + OpenDKIM relay container on the `smtp` network; reconciles drift |
 | `run_post_setup` | Normalizes ownership and directory modes under `~/provision/` workspace |
 
-Key defaults vs `basic`: `ENABLE_DOCKER=true`, `ENABLE_PORTAINER=true`
+Key defaults vs `basic`: `ENABLE_DOCKER=true`, `ENABLE_PORTAINER=true`, `ENABLE_SMTP=true` (skipped until `SMTP_DOMAIN` is set)
 
 Config baseline: `hosts/docker_host.yml`
 
@@ -112,7 +114,8 @@ Config precedence (highest → lowest):
 | `SSH_PERMIT_ROOT_LOGIN` / `SSH_PASSWORD_AUTH` | SSH access policy |
 | `UFW_ALLOWED_PORTS` | Space-separated ports opened by firewall task |
 | `FAIL2BAN_SSH_MAXRETRY` / `FAIL2BAN_SSH_BANTIME` | Fail2ban SSH jail tuning |
-| `ENABLE_DOCKER` / `ENABLE_PORTAINER` | Toggle container tasks on/off |
+| `ENABLE_DOCKER` / `ENABLE_PORTAINER` / `ENABLE_SMTP` | Toggle container tasks on/off |
+| `SMTP_DOMAIN` | Sender domain for the SMTP relay; the task is skipped while empty |
 | `ENABLE_FAIL2BAN` | Toggle fail2ban on/off |
 | `ENABLE_MDE` | Toggle Microsoft Defender install (default `false`) |
 | `PROVISION_SERVERS_REPO_URL` | Git URL for the private `provision-servers` repo (agents/multi_deployment) |
@@ -356,6 +359,52 @@ Deploys Portainer CE as a persistent Docker container.
 
 ---
 
+### `40-container/smtp.sh` — `run_smtp`
+
+Builds `docker/smtp/` (Alpine, Postfix + OpenDKIM, ported from `boilerplate_iac`) and runs it as a
+send-only relay for every stack on the host.
+
+**What it does**
+- Short-circuits when `ENABLE_SMTP=false` or Docker is not installed
+- Resolves `SMTP_DOMAIN`: config → interactive prompt (host FQDN domain offered as default); skips the task if still empty
+- Renders `/etc/provision/smtp.env` (mode 600) from the `SMTP_*` variables
+- Creates the `smtp_spool` / `smtp_dkim` volumes and the attachable `smtp` bridge network
+- Builds the image, labelled with a hash of `docker/smtp/`; rebuilds only when those files change
+- Detects drift in: image, restart policy, env file (label hash), network, volume mounts, port binding; recreates the container when any differs
+- Reports `failed` when `docker run` / `docker start` fails or the container is not running afterwards
+- Writes the SPF / DKIM / DMARC records to publish (one block per sender domain) to `/etc/provision/smtp-dns.txt`
+
+Apps join the `smtp` network (`networks: smtp: external: true`) and send to `smtp:25`, no auth, no TLS
+inside the network. Only envelope senders `@SMTP_ALLOWED_SENDER_DOMAINS` are accepted (rejected at `RCPT TO`).
+The DKIM key is generated on first start into `smtp_dkim`; a fresh volume means a new DNS record.
+If OpenDKIM is down, mail is deferred (`451`) instead of leaving unsigned, and the container exits so the restart policy revives it.
+
+**Config variables**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENABLE_SMTP` | `true` on `docker_host` | Set to `false` to skip |
+| `SMTP_DOMAIN` | empty = skip | Mail leaves as `*@domain`; DKIM-signed for it |
+| `SMTP_HOSTNAME` | `mail.$SMTP_DOMAIN` | HELO name; needs A + PTR for direct delivery |
+| `SMTP_ALLOWED_SENDER_DOMAINS` | `$SMTP_DOMAIN` | Space-separated envelope-sender allowlist |
+| `SMTP_ALLOWED_NETWORKS` | RFC 1918 ranges | Who may submit mail (Postfix `mynetworks`) |
+| `SMTP_DKIM_SELECTOR` / `SMTP_DKIM_BITS` | `mail` / `2048` | DKIM selector and key size |
+| `SMTP_MESSAGE_SIZE_LIMIT` | `26214400` | Max message size in bytes |
+| `SMTP_RELAY_HOST/PORT/USER/PASSWORD` | empty / `587` | Optional upstream relay (SES, Mailgun, Postmark); empty = direct delivery |
+| `SMTP_RELAY_TLS` | `true` | Require TLS to the upstream relay |
+| `SMTP_DMARC_POLICY` / `SMTP_DMARC_RUA` | `quarantine` / `postmaster@$SMTP_DOMAIN` | Values printed in the DMARC record |
+| `SMTP_CONTAINER_NAME` | `smtp` | Container name |
+| `SMTP_IMAGE` | `provision/smtp:latest` | Image tag built from `docker/smtp` |
+| `SMTP_REBUILD_IMAGE` | `false` | `true` rebuilds with `--pull --no-cache` on every run (base image and apk patches) and recreates the container |
+| `SMTP_NETWORK` | `smtp` | Attachable bridge network apps join; alias `smtp` |
+| `SMTP_SPOOL_VOLUME` / `SMTP_DKIM_VOLUME` | `smtp_spool` / `smtp_dkim` | Postfix queue and DKIM key volumes |
+| `SMTP_ENV_FILE` | `/etc/provision/smtp.env` | Rendered env file passed to the container |
+| `SMTP_HOST_PORT` / `SMTP_HOST_BIND` | empty / `127.0.0.1` | Publish port 25 on the host; empty = not published |
+
+`--config` files may also set `docker.smtp`, `smtp.domain`, `smtp.hostname`, `smtp.relay_host`.
+
+---
+
 ### `50-extensions/provision_servers.sh` — `run_provision_servers_extension`
 
 Bootstraps the private `provision-servers` repository onto the machine. Only runs for `agents` and `multi_deployment` profiles.
@@ -403,5 +452,6 @@ No config variables.
 | microsoft_defender | opt-in | opt-in | opt-in | opt-in |
 | docker | — | ✓ | ✓ | ✓ |
 | portainer | — | ✓ | — | — |
+| smtp | — | ✓ | — | — |
 | provision_servers_extension | — | — | ✓ | ✓ |
 | post_setup | — | ✓ | ✓ | ✓ |

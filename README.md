@@ -43,11 +43,16 @@ The provisioning logic is being refactored into Ansible-like layers:
 │   │   └── microsoft_defender.sh
 │   ├── 40-container/
 │   │   ├── docker.sh
-│   │   └── portainer.sh
+│   │   ├── portainer.sh
+│   │   └── smtp.sh
 │   ├── 50-extensions/
 │   │   └── provision_servers.sh
 │   └── 90-post/
 │       └── post_setup.sh
+├── docker/
+│   └── smtp/                    # send-only Postfix + OpenDKIM relay image
+│       ├── Dockerfile
+│       └── entrypoint.sh
 ├── profiles/
 │   ├── basic.sh
 │   ├── docker_host.sh
@@ -75,9 +80,40 @@ The provisioning logic is being refactored into Ansible-like layers:
 ## Profiles
 
 - `basic` = base + user_forge + ssh_hardening + unattended_upgrades + firewall + fail2ban
-- `docker_host` = basic + docker + portainer + post_setup
+- `docker_host` = basic + docker + portainer + smtp + post_setup
 - `agents` = basic + docker + `provision-servers` agent extension + post_setup
 - `multi_deployment` = basic + docker + `provision-servers` deployment extension + post_setup
+
+## SMTP Relay (docker_host)
+
+`docker_host` builds `docker/smtp/` (Postfix + OpenDKIM, ported from `boilerplate_iac`) and runs it as
+the `smtp` container on the attachable `smtp` docker network. It is send-only, DKIM-signs everything and
+only accepts envelope senders `@SMTP_DOMAIN`. Put `SMTP_DOMAIN` in `hosts/docker_host.local.yml` (or
+`smtp.domain` in a `--config` file); interactive runs prompt for it. Without a domain the task is skipped.
+
+```yaml
+env:
+  SMTP_DOMAIN: example.com
+  SMTP_RELAY_HOST: email-smtp.eu-west-1.amazonaws.com   # optional; empty = direct delivery on port 25
+  SMTP_RELAY_USER: ...
+  SMTP_RELAY_PASSWORD: ...
+```
+
+Apps on the host reach it as `smtp:25` by joining the network:
+
+```yaml
+services:
+  app:
+    environment: { MAIL_HOST: smtp, MAIL_PORT: 25, MAIL_ENCRYPTION: "null" }
+    networks: [default, smtp]
+networks:
+  smtp:
+    external: true
+```
+
+After the first run publish the records in `/etc/provision/smtp-dns.txt` (also `docker exec smtp entrypoint.sh dns`),
+then `docker exec smtp entrypoint.sh test you@example.org`. The DKIM key lives in the `smtp_dkim` volume; back it up.
+Set `ENABLE_SMTP: 'false'` to skip the task. Full variable list: `docs/profiles-and-inventory.md`.
 
 ## Optional Security Agent: Microsoft Defender
 
@@ -204,6 +240,7 @@ bash tests/test_ensure.sh
 bash tests/test_config.sh
 bash tests/test_inventory.sh
 bash tests/test_profiles.sh
+bash tests/test_smtp.sh
 bash -n setup.sh orchestrate.sh lib/*.sh tasks/10-system/*.sh tasks/20-identity/*.sh tasks/30-security/*.sh tasks/40-container/*.sh tasks/90-post/*.sh profiles/*.sh tests/*.sh
 ```
 

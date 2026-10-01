@@ -40,4 +40,19 @@ load_host_config "$cfg"
 [[ "$PROVISION_HOSTNAME" == "x-host" ]]
 [[ "$DEFAULT_USER" == "forge" ]]
 
+# Boolean toggles: an explicit false must override, a missing key must not.
+ENABLE_SMTP="true"
+ENABLE_PORTAINER="true"
+cat > "$cfg" <<'YAML'
+profile: docker_host
+docker:
+  smtp: false
+smtp:
+  domain: example.com
+YAML
+load_host_config "$cfg"
+[[ "$ENABLE_SMTP" == "false" ]]
+[[ "$ENABLE_PORTAINER" == "true" ]]
+[[ "$SMTP_DOMAIN" == "example.com" ]]
+
 echo "test_config.sh passed"

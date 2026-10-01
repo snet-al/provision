@@ -29,6 +29,37 @@ env:
   ENABLE_DOCKER: 'true'
   ENABLE_PORTAINER: 'true'
 
+  # Send-only SMTP relay (Postfix + OpenDKIM), built from docker/smtp.
+  # Set SMTP_DOMAIN in hosts/docker_host.local.yml. Empty = the task is skipped
+  # (interactive runs prompt for it, offering the host's FQDN domain as default).
+  ENABLE_SMTP: 'true'
+  SMTP_DOMAIN: ''
+  SMTP_HOSTNAME: ''                      # default mail.$SMTP_DOMAIN; needs A + PTR for direct delivery
+  SMTP_ALLOWED_SENDER_DOMAINS: ''        # default $SMTP_DOMAIN; space-separated
+  SMTP_ALLOWED_NETWORKS: '127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16'
+  SMTP_DKIM_SELECTOR: mail
+  SMTP_DKIM_BITS: '2048'
+  SMTP_MESSAGE_SIZE_LIMIT: '26214400'
+  # Optional upstream relay (SES / Mailgun / Postmark). Empty = direct delivery,
+  # which needs outbound port 25 and a static IP with PTR.
+  SMTP_RELAY_HOST: ''
+  SMTP_RELAY_PORT: '587'
+  SMTP_RELAY_USER: ''
+  SMTP_RELAY_PASSWORD: ''
+  SMTP_RELAY_TLS: 'true'
+  SMTP_DMARC_POLICY: quarantine
+  SMTP_DMARC_RUA: ''                     # default postmaster@$SMTP_DOMAIN
+  # Container wiring. Apps join the SMTP_NETWORK docker network and use smtp:25.
+  SMTP_CONTAINER_NAME: smtp
+  SMTP_IMAGE: provision/smtp:latest
+  SMTP_REBUILD_IMAGE: 'false'            # 'true' = rebuild with --pull --no-cache to pick up base/apk patches
+  SMTP_NETWORK: smtp
+  SMTP_SPOOL_VOLUME: smtp_spool
+  SMTP_DKIM_VOLUME: smtp_dkim
+  SMTP_ENV_FILE: /etc/provision/smtp.env
+  SMTP_HOST_PORT: ''                     # e.g. '2525' to publish on SMTP_HOST_BIND; empty = not published
+  SMTP_HOST_BIND: 127.0.0.1
+
   # Microsoft Defender for Endpoint (optional)
   ENABLE_MDE: 'false'
   MDE_MODE: active
