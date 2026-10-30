@@ -9,6 +9,8 @@ CLI_PROFILE=""
 CLI_CONFIG=""
 CLI_NON_INTERACTIVE=false
 CLI_APPLY=false
+CLI_PLAN=false
+CLI_ONLY=""
 INTERACTIVE_DEFAULT=false
 
 show_help() {
@@ -17,12 +19,17 @@ Usage:
   sudo ./setup.sh                            # interactive mode
   sudo ./setup.sh --profile docker_host --non-interactive --apply #the docker_host profile is the default profile becase we have everything on docker
   sudo ./setup.sh --config ./hosts/basic.yml --apply
+  sudo ./setup.sh --profile docker_host --only ssh_hardening,unattended_upgrades,fail2ban --non-interactive --plan
 
 Options:
   --profile <name>         Profile to run: basic|docker_host|multi_deployment|deployment_compose
   --config <path>          Host config file (.yml/.yaml)
   --non-interactive        Do not prompt; fail on missing required values
   --apply                  Apply changes
+  --plan                   Show what would change, change nothing
+  --only <t1,t2,...>       Run only these tasks instead of the whole profile:
+                           base user_forge ssh_hardening unattended_upgrades firewall fail2ban
+                           microsoft_defender docker portainer smtp provision_servers_extension post_setup
   -h, --help               Show help
 USAGE
 }
@@ -45,6 +52,14 @@ while [[ $# -gt 0 ]]; do
       CLI_APPLY=true
       shift
       ;;
+    --plan)
+      CLI_PLAN=true
+      shift
+      ;;
+    --only)
+      CLI_ONLY="${2:-}"
+      shift 2
+      ;;
     --handoff)
       HANDOFF_COMPLETE=true
       shift
@@ -62,7 +77,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 # No flags means interactive mode with new framework.
-if [[ -z "$CLI_PROFILE" && -z "$CLI_CONFIG" && "$CLI_NON_INTERACTIVE" == "false" && "$CLI_APPLY" == "false" ]]; then
+if [[ "$CLI_PLAN" == "true" && "$CLI_APPLY" == "true" ]]; then
+  echo "--plan and --apply cannot be used together" >&2
+  exit 1
+fi
+
+if [[ -z "$CLI_PROFILE" && -z "$CLI_CONFIG" && -z "$CLI_ONLY" && "$CLI_NON_INTERACTIVE" == "false" && "$CLI_APPLY" == "false" && "$CLI_PLAN" == "false" ]]; then
   INTERACTIVE_DEFAULT=true
 fi
 
@@ -109,7 +129,7 @@ sync_repo_for_handoff() {
   chown "$DEFAULT_USER:$DEFAULT_USER" "$target_repo"
   chmod 750 "$target_repo"
 
-  if rsync -a --delete --exclude "provision-servers/" "$ROOT_DIR/" "$target_repo/"; then
+  if rsync -a --delete --exclude "provision-servers/" --filter "P /hosts/*.local.yml" --filter "P /reports/" "$ROOT_DIR/" "$target_repo/"; then
     chown -R "$DEFAULT_USER:$DEFAULT_USER" "$target_repo"
     log_info "Repository synced to $target_repo"
     return 0
@@ -123,6 +143,16 @@ handoff_to_user_repo() {
   local target_repo
   local handoff_args=("--handoff" "--profile" "$PROVISION_PROFILE")
   target_repo="$(target_user_repo)"
+
+  if is_plan_mode; then
+    log_info "Plan mode: skipping handoff to $target_repo"
+    return 0
+  fi
+
+  if [[ -n "$CLI_ONLY" ]]; then
+    log_info "--only: skipping handoff, running tasks from $ROOT_DIR"
+    return 0
+  fi
 
   if [[ "$HANDOFF_COMPLETE" == "true" ]]; then
     log_info "Handoff already complete; continuing from $ROOT_DIR"
@@ -151,6 +181,11 @@ bootstrap_yq() {
     return 0
   fi
 
+  if is_plan_mode; then
+    log_error "Plan mode does not install packages: yq and jq are required, install them or run with --apply"
+    exit 1
+  fi
+
   ensure_root
   log_info "Bootstrapping required dependencies: yq jq"
   if ! apt-get update -y; then
@@ -169,6 +204,9 @@ bootstrap_yq() {
 }
 
 PROVISION_MODE="apply"
+if [[ "$CLI_PLAN" == "true" ]]; then
+  PROVISION_MODE="plan"
+fi
 
 if [[ "$CLI_NON_INTERACTIVE" == "true" ]]; then
   PROVISION_NON_INTERACTIVE="true"
@@ -223,9 +261,25 @@ if [[ -n "${SERVER_HOSTNAME:-}" ]]; then
 fi
 
 validate_required_non_interactive
+
+SELECTED_TASKS=()
+if [[ -n "$CLI_ONLY" ]]; then
+  IFS=',' read -r -a SELECTED_TASKS <<<"$CLI_ONLY"
+  for _task in "${SELECTED_TASKS[@]}"; do
+    if ! declare -F "run_${_task}" >/dev/null; then
+      log_error "Unknown task for --only: ${_task}"
+      exit 1
+    fi
+  done
+fi
+
 handoff_to_user_repo
 
-echo "Starting profile: $PROVISION_PROFILE (mode=$PROVISION_MODE)"
+if [[ ${#SELECTED_TASKS[@]} -gt 0 ]]; then
+  echo "Starting tasks: ${SELECTED_TASKS[*]} (profile=$PROVISION_PROFILE mode=$PROVISION_MODE)"
+else
+  echo "Starting profile: $PROVISION_PROFILE (mode=$PROVISION_MODE)"
+fi
 
 run_profile() {
   case "$PROVISION_PROFILE" in
@@ -240,13 +294,28 @@ run_profile() {
   esac
 }
 
-if run_profile; then
-  :
-else
-  log_status "failed" "setup" "profile execution failed"
-fi
+run_selected_tasks() {
+  local task
+  for task in "${SELECTED_TASKS[@]}"; do
+    "run_${task}"
+  done
+}
 
-run_post_setup
+if [[ ${#SELECTED_TASKS[@]} -gt 0 ]]; then
+  if run_selected_tasks; then
+    :
+  else
+    log_status "failed" "setup" "task execution failed"
+  fi
+else
+  if run_profile; then
+    :
+  else
+    log_status "failed" "setup" "profile execution failed"
+  fi
+
+  run_post_setup
+fi
 
 report_dir="$ROOT_DIR/reports/$(date +%Y%m%d_%H%M%S)"
 report_file="$report_dir/${PROVISION_HOSTNAME}.json"

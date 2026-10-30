@@ -151,24 +151,79 @@ ensure_line_in_file() {
   _set_ensure_status "changed" "ensure_line_in_file" "added line to $file"
 }
 
+_strip_marked_block() {
+  local file="$1"
+  local marker="$2"
+  local mode="legacy"
+  grep -Fx -- "# /$marker" "$file" >/dev/null 2>&1 && mode="range"
+  awk -v b="# $marker" -v e="# /$marker" -v mode="$mode" '
+    $0 == b { skip = (mode == "range") ? 2 : 1; next }
+    skip == 2 { if ($0 == e) skip = 0; next }
+    skip == 1 { skip = 0; next }
+    { print }
+  ' "$file"
+}
+
+_write_if_different() {
+  local file="$1"
+  local tmp_file="$2"
+  local name="$3"
+  local action="$4"
+  if [[ -f "$file" ]] && cmp -s "$tmp_file" "$file"; then
+    rm -f "$tmp_file"
+    _set_ensure_status "ok" "$name" "$file already up to date"
+    return 0
+  fi
+  if is_plan_mode; then
+    rm -f "$tmp_file"
+    _set_ensure_status "changed" "$name" "plan: would $action $file"
+    return 0
+  fi
+  backup_file_if_exists "$file"
+  if ! { touch "$file" && cat "$tmp_file" > "$file"; } 2>/dev/null; then
+    rm -f "$tmp_file"
+    _set_ensure_status "failed" "$name" "could not write $file"
+    return 1
+  fi
+  rm -f "$tmp_file"
+  _set_ensure_status "changed" "$name" "$action $file: done"
+}
+
 ensure_block_in_file() {
   local file="$1"
   local marker="$2"
   local block="$3"
-  if [[ -f "$file" ]] && grep -F -- "$marker" "$file" >/dev/null 2>&1; then
-    _set_ensure_status "ok" "ensure_block_in_file" "$marker already present in $file"
-    return 0
-  fi
-  if is_plan_mode; then
-    _set_ensure_status "changed" "ensure_block_in_file" "plan: would append block in $file"
-    return 0
-  fi
-  touch "$file"
+  local kept=""
+  [[ -f "$file" ]] && kept="$(_strip_marked_block "$file" "$marker")"
+
+  local tmp_file
+  tmp_file="$(mktemp)"
   {
-    printf '\n# %s\n' "$marker"
-    printf '%s\n' "$block"
-  } >> "$file"
-  _set_ensure_status "changed" "ensure_block_in_file" "added block to $file"
+    if [[ -n "$kept" ]]; then
+      printf '%s\n\n' "$kept"
+    fi
+    printf '# %s\n' "$marker"
+    printf '%b\n' "$block"
+    printf '# /%s\n' "$marker"
+  } > "$tmp_file"
+
+  _write_if_different "$file" "$tmp_file" "ensure_block_in_file" "write $marker block in"
+}
+
+ensure_block_absent() {
+  local file="$1"
+  local marker="$2"
+  if [[ ! -f "$file" ]] || ! grep -Fx -- "# $marker" "$file" >/dev/null 2>&1; then
+    _set_ensure_status "ok" "ensure_block_absent" "$marker not present in $file"
+    return 0
+  fi
+
+  local kept tmp_file
+  kept="$(_strip_marked_block "$file" "$marker")"
+  tmp_file="$(mktemp)"
+  printf '%s\n' "$kept" > "$tmp_file"
+
+  _write_if_different "$file" "$tmp_file" "ensure_block_absent" "remove $marker block from"
 }
 
 ensure_service_enabled() {
@@ -308,8 +363,8 @@ ensure_ufw_rule() {
 ensure_sshd_option() {
   local key="$1"
   local value="$2"
-  local dropin_dir="/etc/ssh/sshd_config.d"
-  local file="${dropin_dir}/99-provision.conf"
+  local dropin_dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}"
+  local file="${dropin_dir}/00-provision.conf"
 
   local current=""
   if [[ -f "$file" ]]; then
@@ -343,13 +398,25 @@ ensure_sshd_option() {
     ' "$file" > "$tmp_file"
   fi
   printf '%s %s\n' "$key" "$value" >> "$tmp_file"
+
+  local previous=""
+  if [[ -f "$file" ]]; then
+    previous="$(mktemp)"
+    cp -p "$file" "$previous"
+  fi
   mv "$tmp_file" "$file"
   chmod 0644 "$file"
 
   if sshd -t; then
+    [[ -n "$previous" ]] && rm -f "$previous"
     _set_ensure_status "changed" "ensure_sshd_option" "$key set to $value (drop-in)"
   else
-    _set_ensure_status "failed" "ensure_sshd_option" "invalid sshd config after setting $key"
+    if [[ -n "$previous" ]]; then
+      mv "$previous" "$file"
+    else
+      rm -f "$file"
+    fi
+    _set_ensure_status "failed" "ensure_sshd_option" "invalid sshd config after setting $key $value; previous $file restored"
     return 1
   fi
 }

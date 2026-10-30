@@ -8,6 +8,7 @@ env:
   SSH_PERMIT_ROOT_LOGIN: 'no'
   SSH_PASSWORD_AUTH: 'no'
   SSH_X11_FORWARDING: 'no'
+  SSH_KBD_INTERACTIVE_AUTH: 'no'
 
   UFW_DEFAULT_INCOMING: deny
   UFW_DEFAULT_OUTGOING: allow
@@ -17,6 +18,9 @@ env:
   FAIL2BAN_SSH_MAXRETRY: '3'
   FAIL2BAN_SSH_BANTIME: 1h
   FAIL2BAN_SSH_FINDTIME: 10m
+
+  AUTO_REBOOT: 'true'
+  AUTO_REBOOT_TIME: '04:00'
 
   BASIC_PACKAGES: 'ca-certificates vim git jq net-tools libfuse2 htop tmux curl wget unzip rsync software-properties-common yq'
   SECURITY_PACKAGES: 'ufw fail2ban unattended-upgrades apt-listchanges logwatch auditd rkhunter'

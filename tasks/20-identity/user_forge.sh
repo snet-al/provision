@@ -7,6 +7,10 @@ is_valid_ssh_public_key() {
 
 ensure_authorized_keys_file() {
   local auth_file="/home/$DEFAULT_USER/.ssh/authorized_keys"
+  if is_plan_mode; then
+    log_status "changed" "ensure_authorized_keys_file" "plan: would ensure $auth_file (600, $DEFAULT_USER)"
+    return 0
+  fi
   touch "$auth_file"
   chown "$DEFAULT_USER:$DEFAULT_USER" "$auth_file"
   chmod 600 "$auth_file"
@@ -29,6 +33,11 @@ prompt_forge_password_if_needed() {
 
   if forge_password_is_set; then
     log_status "ok" "prompt_forge_password_if_needed" "password already set for $DEFAULT_USER"
+    return 0
+  fi
+
+  if is_plan_mode; then
+    log_status "changed" "prompt_forge_password_if_needed" "plan: would prompt for a password for $DEFAULT_USER"
     return 0
   fi
 
@@ -75,6 +84,11 @@ prompt_forge_ssh_key_if_needed() {
 
   if [[ -s "$auth_file" ]]; then
     log_status "ok" "prompt_forge_ssh_key_if_needed" "authorized_keys already present for $DEFAULT_USER"
+    return 0
+  fi
+
+  if is_plan_mode; then
+    log_status "changed" "prompt_forge_ssh_key_if_needed" "plan: would prompt for an ssh key for $DEFAULT_USER"
     return 0
   fi
 

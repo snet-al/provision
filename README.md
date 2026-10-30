@@ -148,6 +148,19 @@ Interactive runs now require a real password for `DEFAULT_USER` (normally `forge
 sudo ./setup.sh --profile docker_host --non-interactive --apply
 ```
 
+### Existing Servers: Run Only Some Tasks
+
+`--only` runs the listed tasks instead of the whole profile, `--plan` shows what would change without changing anything:
+
+```bash
+cd ~/provision && git pull
+sudo ./setup.sh --profile docker_host --only ssh_hardening,unattended_upgrades,fail2ban --non-interactive --plan
+sudo ./setup.sh --profile docker_host --only ssh_hardening,unattended_upgrades,fail2ban --non-interactive --apply
+```
+
+`--only` runs from the current checkout and skips the handoff to `/home/$DEFAULT_USER/provision`. `--plan` never installs packages; it needs `yq` and `jq` already present.
+Add `portainer` only on hosts that already run it. Per-host differences go in `hosts/<profile>.local.yml` (kept by the handoff sync).
+
 ### 3) Declarative Host Config (YAML only)
 
 YAML configs require `yq`:
@@ -241,6 +254,7 @@ bash tests/test_config.sh
 bash tests/test_inventory.sh
 bash tests/test_profiles.sh
 bash tests/test_smtp.sh
+bash tests/test_security_tasks.sh
 bash -n setup.sh orchestrate.sh lib/*.sh tasks/10-system/*.sh tasks/20-identity/*.sh tasks/30-security/*.sh tasks/40-container/*.sh tasks/90-post/*.sh profiles/*.sh tests/*.sh
 ```
 

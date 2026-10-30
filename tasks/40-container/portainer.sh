@@ -11,11 +11,14 @@ run_portainer() {
     log_status "failed" "run_portainer" "docker is required"
     return 1
   fi
+  local engine_ok=true
+  check_docker_engine_version || engine_ok=false
 
   local volume="${PORTAINER_VOLUME_NAME:-portainer_data}"
   local name="${PORTAINER_CONTAINER_NAME:-portainer}"
   local image="${PORTAINER_IMAGE:-portainer/portainer-ce:latest}"
-  local http_port="${PORTAINER_HTTP_PORT:-9000}"
+  local bind="${PORTAINER_BIND:-127.0.0.1}"
+  local http_port="${PORTAINER_HTTP_PORT:-}"
   local https_port="${PORTAINER_HTTPS_PORT:-9443}"
   local pull_image="${PORTAINER_PULL_IMAGE:-false}"
 
@@ -29,6 +32,7 @@ run_portainer() {
   fi
 
   local container_exists=false
+  local running_state=""
   if docker ps -a --format '{{.Names}}' | grep -Fx "$name" >/dev/null 2>&1; then
     container_exists=true
   fi
@@ -45,7 +49,7 @@ run_portainer() {
   fi
 
   if [[ "$container_exists" == "true" ]]; then
-    local current_image current_image_id restart_policy running_state
+    local current_image current_image_id restart_policy
     current_image="$(docker inspect --format '{{.Config.Image}}' "$name" 2>/dev/null || true)"
     current_image_id="$(docker inspect --format '{{.Image}}' "$name" 2>/dev/null || true)"
     restart_policy="$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' "$name" 2>/dev/null || true)"
@@ -61,14 +65,21 @@ run_portainer() {
       log_status "changed" "run_portainer" "restart policy drift detected"
     fi
 
-    if ! docker inspect --format '{{json .HostConfig.PortBindings}}' "$name" | grep -F "\"9000/tcp\":[{\"HostIp\":\"\",\"HostPort\":\"$http_port\"}]" >/dev/null 2>&1; then
+    local port_bindings
+    port_bindings="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$name" 2>/dev/null || true)"
+    if [[ -n "$http_port" ]]; then
+      if ! grep -F "\"9000/tcp\":[{\"HostIp\":\"$bind\",\"HostPort\":\"$http_port\"}]" >/dev/null 2>&1 <<<"$port_bindings"; then
+        needs_recreate=true
+        log_status "changed" "run_portainer" "HTTP port binding drift detected"
+      fi
+    elif grep -F '"9000/tcp"' >/dev/null 2>&1 <<<"$port_bindings"; then
       needs_recreate=true
-      log_status "changed" "run_portainer" "HTTP port binding drift detected"
+      log_status "changed" "run_portainer" "HTTP port 9000 is published but PORTAINER_HTTP_PORT is empty"
     fi
 
-    if ! docker inspect --format '{{json .HostConfig.PortBindings}}' "$name" | grep -F "\"9443/tcp\":[{\"HostIp\":\"\",\"HostPort\":\"$https_port\"}]" >/dev/null 2>&1; then
+    if ! grep -F "\"9443/tcp\":[{\"HostIp\":\"$bind\",\"HostPort\":\"$https_port\"}]" >/dev/null 2>&1 <<<"$port_bindings"; then
       needs_recreate=true
-      log_status "changed" "run_portainer" "HTTPS port binding drift detected"
+      log_status "changed" "run_portainer" "HTTPS port binding drift detected (want $bind:$https_port)"
     fi
 
     if ! docker inspect --format '{{json .Mounts}}' "$name" | grep -F "\"Source\":\"/var/run/docker.sock\"" >/dev/null 2>&1; then
@@ -92,16 +103,26 @@ run_portainer() {
     if [[ "$needs_recreate" == "false" ]]; then
       if [[ "$running_state" == "true" ]]; then
         log_status "ok" "run_portainer" "container $name already healthy"
+      elif [[ "$engine_ok" != "true" ]]; then
+        log_status "failed" "run_portainer" "not starting stopped $name: Docker engine is older than 28.0.0 or unreadable"
+        return 1
       elif is_plan_mode; then
         log_status "changed" "run_portainer" "plan: would start stopped container $name"
       else
-        docker start "$name" >/dev/null
+        if ! docker start "$name" >/dev/null; then
+          log_status "failed" "run_portainer" "docker start failed for $name"
+          return 1
+        fi
         log_status "changed" "run_portainer" "started existing container $name"
       fi
     fi
   fi
 
   if [[ "$container_exists" == "false" || "$needs_recreate" == "true" ]]; then
+    if [[ "$engine_ok" != "true" ]] && ! [[ "$container_exists" == "true" && "$running_state" == "true" ]]; then
+      log_status "failed" "run_portainer" "not creating $name: Docker engine is older than 28.0.0 or unreadable"
+      return 1
+    fi
     if is_plan_mode; then
       if [[ "$container_exists" == "true" ]]; then
         log_status "changed" "run_portainer" "plan: would recreate $name"
@@ -109,14 +130,20 @@ run_portainer() {
         log_status "changed" "run_portainer" "plan: would run $name container"
       fi
     else
-      if [[ "$container_exists" == "true" ]]; then
-        docker rm -f "$name" >/dev/null 2>&1 || true
+      if [[ "$container_exists" == "true" ]] && ! docker rm -f "$name" >/dev/null 2>&1; then
+        log_status "failed" "run_portainer" "could not remove $name; the old container keeps running with its old port bindings"
+        return 1
       fi
-      docker run -d --name "$name" --restart unless-stopped \
-        -p "$http_port:9000" -p "$https_port:9443" \
+      local publish=(-p "$bind:$https_port:9443")
+      [[ -n "$http_port" ]] && publish+=(-p "$bind:$http_port:9000")
+      if ! docker run -d --name "$name" --restart unless-stopped \
+        "${publish[@]}" \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v "$volume:/data" \
-        "$image" >/dev/null
+        "$image" >/dev/null; then
+        log_status "failed" "run_portainer" "docker run failed for $name (data is still in volume $volume)"
+        return 1
+      fi
       if [[ "$container_exists" == "true" ]]; then
         log_status "changed" "run_portainer" "recreated $name with desired config"
       else
@@ -124,4 +151,6 @@ run_portainer() {
       fi
     fi
   fi
+
+  [[ "$engine_ok" == "true" ]]
 }
