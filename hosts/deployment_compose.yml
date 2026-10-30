@@ -5,9 +5,10 @@ env:
 
   SSH_PORT: '22'
   SSH_MAX_AUTH_TRIES: '3'
-  SSH_PERMIT_ROOT_LOGIN: 'no'
+  SSH_PERMIT_ROOT_LOGIN: prohibit-password
   SSH_PASSWORD_AUTH: 'no'
   SSH_X11_FORWARDING: 'no'
+  SSH_KBD_INTERACTIVE_AUTH: 'no'
 
   UFW_DEFAULT_INCOMING: deny
   UFW_DEFAULT_OUTGOING: allow
@@ -17,6 +18,9 @@ env:
   FAIL2BAN_SSH_MAXRETRY: '3'
   FAIL2BAN_SSH_BANTIME: 1h
   FAIL2BAN_SSH_FINDTIME: 10m
+
+  AUTO_REBOOT: 'false'
+  AUTO_REBOOT_TIME: '04:00'
 
   DOCKER_GPG_URL: https://download.docker.com/linux/ubuntu/gpg
   PORTAINER_PULL_IMAGE: 'false'

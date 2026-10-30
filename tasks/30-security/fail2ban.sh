@@ -14,6 +14,12 @@ run_fail2ban() {
   local jail_content="[sshd]\nenabled  = true\nmaxretry = ${FAIL2BAN_SSH_MAXRETRY:-3}\nbantime  = ${FAIL2BAN_SSH_BANTIME:-1h}\nfindtime = ${FAIL2BAN_SSH_FINDTIME:-10m}"
 
   ensure_block_in_file "$jail_file" "provision:fail2ban:sshd" "$jail_content"
+  local jail_status="$ENSURE_LAST_STATUS"
   ensure_service_enabled fail2ban
   ensure_service_running fail2ban
+
+  if [[ "$jail_status" == "changed" ]] && ! is_plan_mode; then
+    fail2ban-client reload >/dev/null
+    log_status "changed" "run_fail2ban" "fail2ban reloaded with new sshd jail"
+  fi
 }

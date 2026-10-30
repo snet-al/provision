@@ -15,7 +15,8 @@ run_portainer() {
   local volume="${PORTAINER_VOLUME_NAME:-portainer_data}"
   local name="${PORTAINER_CONTAINER_NAME:-portainer}"
   local image="${PORTAINER_IMAGE:-portainer/portainer-ce:latest}"
-  local http_port="${PORTAINER_HTTP_PORT:-9000}"
+  local bind="${PORTAINER_BIND:-127.0.0.1}"
+  local http_port="${PORTAINER_HTTP_PORT:-}"
   local https_port="${PORTAINER_HTTPS_PORT:-9443}"
   local pull_image="${PORTAINER_PULL_IMAGE:-false}"
 
@@ -61,14 +62,21 @@ run_portainer() {
       log_status "changed" "run_portainer" "restart policy drift detected"
     fi
 
-    if ! docker inspect --format '{{json .HostConfig.PortBindings}}' "$name" | grep -F "\"9000/tcp\":[{\"HostIp\":\"\",\"HostPort\":\"$http_port\"}]" >/dev/null 2>&1; then
+    local port_bindings
+    port_bindings="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$name" 2>/dev/null || true)"
+    if [[ -n "$http_port" ]]; then
+      if ! grep -F "\"9000/tcp\":[{\"HostIp\":\"$bind\",\"HostPort\":\"$http_port\"}]" >/dev/null 2>&1 <<<"$port_bindings"; then
+        needs_recreate=true
+        log_status "changed" "run_portainer" "HTTP port binding drift detected"
+      fi
+    elif grep -F '"9000/tcp"' >/dev/null 2>&1 <<<"$port_bindings"; then
       needs_recreate=true
-      log_status "changed" "run_portainer" "HTTP port binding drift detected"
+      log_status "changed" "run_portainer" "HTTP port 9000 is published but PORTAINER_HTTP_PORT is empty"
     fi
 
-    if ! docker inspect --format '{{json .HostConfig.PortBindings}}' "$name" | grep -F "\"9443/tcp\":[{\"HostIp\":\"\",\"HostPort\":\"$https_port\"}]" >/dev/null 2>&1; then
+    if ! grep -F "\"9443/tcp\":[{\"HostIp\":\"$bind\",\"HostPort\":\"$https_port\"}]" >/dev/null 2>&1 <<<"$port_bindings"; then
       needs_recreate=true
-      log_status "changed" "run_portainer" "HTTPS port binding drift detected"
+      log_status "changed" "run_portainer" "HTTPS port binding drift detected (want $bind:$https_port)"
     fi
 
     if ! docker inspect --format '{{json .Mounts}}' "$name" | grep -F "\"Source\":\"/var/run/docker.sock\"" >/dev/null 2>&1; then
@@ -112,8 +120,10 @@ run_portainer() {
       if [[ "$container_exists" == "true" ]]; then
         docker rm -f "$name" >/dev/null 2>&1 || true
       fi
+      local publish=(-p "$bind:$https_port:9443")
+      [[ -n "$http_port" ]] && publish+=(-p "$bind:$http_port:9000")
       docker run -d --name "$name" --restart unless-stopped \
-        -p "$http_port:9000" -p "$https_port:9443" \
+        "${publish[@]}" \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v "$volume:/data" \
         "$image" >/dev/null

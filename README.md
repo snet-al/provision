@@ -148,6 +148,18 @@ Interactive runs now require a real password for `DEFAULT_USER` (normally `forge
 sudo ./setup.sh --profile docker_host --non-interactive --apply
 ```
 
+### Existing Servers: Run Only Some Tasks
+
+`--only` runs the listed tasks instead of the whole profile, `--plan` shows what would change without changing anything:
+
+```bash
+cd ~/provision && git pull
+sudo ./setup.sh --profile docker_host --only ssh_hardening,unattended_upgrades,fail2ban --non-interactive --plan
+sudo ./setup.sh --profile docker_host --only ssh_hardening,unattended_upgrades,fail2ban --non-interactive --apply
+```
+
+Add `portainer` only on hosts that already run it. Per-host differences go in `hosts/<profile>.local.yml`.
+
 ### 3) Declarative Host Config (YAML only)
 
 YAML configs require `yq`:
