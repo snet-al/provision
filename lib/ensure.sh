@@ -180,8 +180,11 @@ _write_if_different() {
     return 0
   fi
   backup_file_if_exists "$file"
-  touch "$file"
-  cat "$tmp_file" > "$file"
+  if ! { touch "$file" && cat "$tmp_file" > "$file"; } 2>/dev/null; then
+    rm -f "$tmp_file"
+    _set_ensure_status "failed" "$name" "could not write $file"
+    return 1
+  fi
   rm -f "$tmp_file"
   _set_ensure_status "changed" "$name" "$action $file: done"
 }

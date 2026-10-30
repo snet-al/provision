@@ -55,6 +55,16 @@ ensure_block_in_file "$legacy20" "provision:auto-upgrades" 'APT::Periodic::Updat
 [[ "$(grep -cF '\n' "$legacy20")" == "0" ]]
 [[ "$(grep -c '^# provision:auto-upgrades$' "$legacy20")" == "1" ]]
 
+ro="$TMP/readonly.conf"
+printf 'x\n' > "$ro"
+chmod 444 "$ro"
+if [[ "$EUID" -ne 0 ]]; then
+  if ensure_block_in_file "$ro" "provision:test" "y"; then
+    echo "expected write failure"; exit 1
+  fi
+  [[ "$ENSURE_LAST_STATUS" == "failed" ]]
+fi
+
 PROVISION_MODE="plan"
 p="$TMP/plan.conf"
 ensure_block_in_file "$p" "provision:test" "x"

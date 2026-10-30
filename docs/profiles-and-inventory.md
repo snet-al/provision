@@ -232,8 +232,8 @@ Enforces a hardened SSH daemon configuration.
 **What it does**
 - Backs up `/etc/ssh/sshd_config` and `/etc/ssh/sshd_config.d/00-provision.conf`
 - Applies each option via `ensure_sshd_option` into `00-provision.conf` (sshd keeps the first value it reads, so it must sort before cloud-init's `50-cloud-init.conf`)
-- Refuses `PasswordAuthentication no` when `DEFAULT_USER` has no `authorized_keys`
-- Removes legacy drop-ins listed in `SSH_LEGACY_DROPINS`
+- Stops before changing anything when `PasswordAuthentication no` is wanted but `DEFAULT_USER` has no `authorized_keys`
+- Removes legacy drop-ins listed in `SSH_LEGACY_DROPINS` only when they contain nothing but options this task manages; otherwise keeps them and warns
 - Restarts `ssh` only when at least one value actually changed
 - Verifies the effective values with `sshd -T` and fails if another file overrides them
 

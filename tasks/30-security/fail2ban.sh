@@ -18,8 +18,16 @@ run_fail2ban() {
   ensure_service_enabled fail2ban
   ensure_service_running fail2ban
 
+  if [[ "$jail_status" == "failed" ]]; then
+    return 1
+  fi
+
   if [[ "$jail_status" == "changed" ]] && ! is_plan_mode; then
-    fail2ban-client reload >/dev/null
-    log_status "changed" "run_fail2ban" "fail2ban reloaded with new sshd jail"
+    if fail2ban-client reload >/dev/null 2>&1; then
+      log_status "changed" "run_fail2ban" "fail2ban reloaded with new sshd jail"
+    else
+      log_status "failed" "run_fail2ban" "fail2ban-client reload failed (check: fail2ban-client -d)"
+      return 1
+    fi
   fi
 }

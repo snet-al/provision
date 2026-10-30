@@ -18,12 +18,28 @@ sshd_effective_value() {
   esac
 }
 
+ssh_dropin_unmanaged_keys() {
+  awk '
+    /^[[:space:]]*(#|$)/ { next }
+    {
+      k = tolower($1)
+      if (k !~ /^(port|permitrootlogin|passwordauthentication|x11forwarding|maxauthtries|kbdinteractiveauthentication)$/) print $1
+    }
+  ' "$1" | sort -u | tr '\n' ' '
+}
+
 remove_legacy_ssh_dropins() {
-  local name path
+  local name path unmanaged
   SSH_LEGACY_REMOVED=false
   for name in ${SSH_LEGACY_DROPINS:-99-provision.conf 00-hardening.conf}; do
-    path="/etc/ssh/sshd_config.d/$name"
+    path="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}/$name"
     [[ -f "$path" ]] || continue
+    unmanaged="$(ssh_dropin_unmanaged_keys "$path")"
+    if [[ -n "$unmanaged" ]]; then
+      log_warn "Keeping $path: it sets options provision does not manage (${unmanaged% }); review it and remove it by hand if it is obsolete"
+      log_status "skipped" "run_ssh_hardening" "kept legacy drop-in $path (unmanaged: ${unmanaged% })"
+      continue
+    fi
     if is_plan_mode; then
       log_status "changed" "run_ssh_hardening" "plan: would remove legacy drop-in $path"
       continue
@@ -62,27 +78,29 @@ verify_sshd_effective() {
 run_ssh_hardening() {
   log_info "Running task: ssh_hardening"
   local changed=false
-  backup_file_if_exists "/etc/ssh/sshd_config"
-  backup_file_if_exists "/etc/ssh/sshd_config.d/00-provision.conf"
 
   local root_login password_auth
   root_login="$(normalize_bool_to_ssh "${SSH_PERMIT_ROOT_LOGIN:-prohibit-password}")"
   password_auth="$(normalize_bool_to_ssh "${SSH_PASSWORD_AUTH:-no}")"
+  if [[ "$password_auth" == "no" && ! -s "/home/$DEFAULT_USER/.ssh/authorized_keys" ]]; then
+    log_status "failed" "run_ssh_hardening" "no changes made: /home/$DEFAULT_USER/.ssh/authorized_keys is empty, disabling password login would lock out $DEFAULT_USER"
+    return 1
+  fi
+
   local expected=(
     "PermitRootLogin=$root_login"
     "X11Forwarding=${SSH_X11_FORWARDING:-no}"
     "MaxAuthTries=${SSH_MAX_AUTH_TRIES:-3}"
     "KbdInteractiveAuthentication=${SSH_KBD_INTERACTIVE_AUTH:-no}"
+    "PasswordAuthentication=$password_auth"
   )
+
+  backup_file_if_exists "/etc/ssh/sshd_config"
+  backup_file_if_exists "/etc/ssh/sshd_config.d/00-provision.conf"
 
   ensure_sshd_option "Port" "${SSH_PORT:-22}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
   ensure_sshd_option "PermitRootLogin" "$root_login"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-  if [[ "$password_auth" == "no" && ! -s "/home/$DEFAULT_USER/.ssh/authorized_keys" ]]; then
-    log_status "failed" "run_ssh_hardening" "refusing PasswordAuthentication no: /home/$DEFAULT_USER/.ssh/authorized_keys is empty (would lock out $DEFAULT_USER)"
-  else
-    ensure_sshd_option "PasswordAuthentication" "$password_auth"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-    expected+=("PasswordAuthentication=$password_auth")
-  fi
+  ensure_sshd_option "PasswordAuthentication" "$password_auth"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
   ensure_sshd_option "X11Forwarding" "${SSH_X11_FORWARDING:-no}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
   ensure_sshd_option "MaxAuthTries" "${SSH_MAX_AUTH_TRIES:-3}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
   ensure_sshd_option "KbdInteractiveAuthentication" "${SSH_KBD_INTERACTIVE_AUTH:-no}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true

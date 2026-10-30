@@ -129,7 +129,7 @@ sync_repo_for_handoff() {
   chown "$DEFAULT_USER:$DEFAULT_USER" "$target_repo"
   chmod 750 "$target_repo"
 
-  if rsync -a --delete --exclude "provision-servers/" "$ROOT_DIR/" "$target_repo/"; then
+  if rsync -a --delete --exclude "provision-servers/" --filter "P /hosts/*.local.yml" --filter "P /reports/" "$ROOT_DIR/" "$target_repo/"; then
     chown -R "$DEFAULT_USER:$DEFAULT_USER" "$target_repo"
     log_info "Repository synced to $target_repo"
     return 0
@@ -149,6 +149,11 @@ handoff_to_user_repo() {
     return 0
   fi
 
+  if [[ -n "$CLI_ONLY" ]]; then
+    log_info "--only: skipping handoff, running tasks from $ROOT_DIR"
+    return 0
+  fi
+
   if [[ "$HANDOFF_COMPLETE" == "true" ]]; then
     log_info "Handoff already complete; continuing from $ROOT_DIR"
     return 0
@@ -165,7 +170,6 @@ handoff_to_user_repo() {
   handoff_args+=("--apply")
   [[ "$PROVISION_NON_INTERACTIVE" == "true" ]] && handoff_args+=("--non-interactive")
   [[ -n "$CLI_CONFIG" ]] && handoff_args+=("--config" "$CLI_CONFIG")
-  [[ -n "$CLI_ONLY" ]] && handoff_args+=("--only" "$CLI_ONLY")
 
   log_info "Re-launching setup from $target_repo"
   exec "$target_repo/setup.sh" "${handoff_args[@]}"
@@ -175,6 +179,11 @@ bootstrap_yq() {
   if command -v yq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     log_info "Required dependencies already available: yq jq"
     return 0
+  fi
+
+  if is_plan_mode; then
+    log_error "Plan mode does not install packages: yq and jq are required, install them or run with --apply"
+    exit 1
   fi
 
   ensure_root
