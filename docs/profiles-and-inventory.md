@@ -195,7 +195,7 @@ Enables automatic background security patching via APT.
 - Removes the old `provision:unattended-upgrades` block from `50unattended-upgrades` (older runs wrote it on one line with literal `\n`, which crashes `unattended-upgrade`)
 - Writes `/etc/apt/apt.conf.d/52provision-unattended-upgrades` — security + updates origins and the automatic reboot policy
 - Writes `/etc/apt/apt.conf.d/20auto-upgrades` — enables daily package list refresh and unattended upgrade
-- Fails if `apt-config dump` errors or any `Origins-Pattern` entry is invalid
+- Fails if `apt-config dump` errors or any `Origins-Pattern` entry would be rejected by `unattended-upgrade` (same `key=value` rules and keys as its parser)
 - Adds a cron job `0 3 * * *` that runs `unattended-upgrade -v`
 - Enables and starts the `unattended-upgrades` service
 
@@ -232,17 +232,20 @@ Enforces a hardened SSH daemon configuration.
 **What it does**
 - Backs up `/etc/ssh/sshd_config` and `/etc/ssh/sshd_config.d/00-provision.conf`
 - Applies each option via `ensure_sshd_option` into `00-provision.conf` (sshd keeps the first value it reads, so it must sort before cloud-init's `50-cloud-init.conf`)
+- Normalizes yes/no values (YAML `false` → `no`) and stops before changing anything when a value is invalid
 - Stops before changing anything when `PasswordAuthentication no` is wanted but `DEFAULT_USER` has no `authorized_keys`
+- Stops before changing anything when `PermitRootLogin no` is wanted but root has keys it can log in with now (e.g. Forge); set `SSH_PERMIT_ROOT_LOGIN: prohibit-password` in that host's `.local.yml` if they are needed
+- Restores the previous `00-provision.conf` when `sshd -t` rejects a new value
 - Removes legacy drop-ins listed in `SSH_LEGACY_DROPINS` only when they contain nothing but options this task manages; otherwise keeps them and warns
 - Restarts `ssh` only when at least one value actually changed
-- Verifies the effective values with `sshd -T` and fails if another file overrides them
+- Verifies the effective values with `sshd -T`, and with `sshd -T -C` as `DEFAULT_USER` and as root so `Match` blocks are applied; fails if anything overrides them and warns when other `Match` blocks exist
 
 **Config variables**
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `SSH_PORT` | `22` | Port sshd listens on |
-| `SSH_PERMIT_ROOT_LOGIN` | `prohibit-password` | `yes`/`no`/`prohibit-password` (keys only; keeps Forge working) |
+| `SSH_PERMIT_ROOT_LOGIN` | `no` (`prohibit-password` in `multi_deployment`/`deployment_compose`) | `yes`/`no`/`prohibit-password`. Forge-managed hosts need `prohibit-password` (set it in `.local.yml`) |
 | `SSH_PASSWORD_AUTH` | `no` | `yes`/`no` |
 | `SSH_X11_FORWARDING` | `no` | `yes`/`no` |
 | `SSH_MAX_AUTH_TRIES` | `3` | Max authentication attempts per connection |
@@ -282,6 +285,7 @@ Protects SSH against brute-force login attempts.
 - Installs `fail2ban`
 - Writes `/etc/fail2ban/jail.d/sshd-hardening.conf` with the configured SSH jail
 - Enables and starts the `fail2ban` service
+- On every run compares the running `sshd` jail (`maxretry`, `bantime`, `findtime`) with the config, reloads when they differ, and fails if they still differ
 
 **Config variables**
 
@@ -354,7 +358,8 @@ Deploys Portainer CE as a persistent Docker container.
 - Creates the named data volume if absent
 - Pulls the image when `PORTAINER_PULL_IMAGE=true`
 - Detects drift in: image tag, restart policy, HTTP/HTTPS port bindings, docker socket mount, data volume mount
-- Recreates the container if any drift is detected; starts it if stopped
+- Recreates the container if any drift is detected; starts it if stopped. Fails (instead of reporting success) when removing, recreating or starting it fails
+- Fails when the Docker engine is older than 28.0.0, where ports published on `127.0.0.1` can be reached by neighbouring hosts
 
 **Config variables**
 

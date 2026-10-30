@@ -18,6 +18,20 @@ sshd_effective_value() {
   esac
 }
 
+ssh_option_value_valid() {
+  local key="$1"
+  local value="$2"
+  case "$key" in
+    PermitRootLogin) [[ "$value" =~ ^(yes|no|prohibit-password|without-password|forced-commands-only)$ ]] ;;
+    Port|MaxAuthTries) [[ "$value" =~ ^[0-9]+$ ]] ;;
+    *) [[ "$value" =~ ^(yes|no)$ ]] ;;
+  esac
+}
+
+ssh_check_context() {
+  echo "user=$1,host=provision-check,addr=203.0.113.10"
+}
+
 ssh_dropin_unmanaged_keys() {
   awk '
     /^[[:space:]]*(#|$)/ { next }
@@ -52,24 +66,40 @@ remove_legacy_ssh_dropins() {
 }
 
 verify_sshd_effective() {
-  local effective
-  if ! effective="$(sshd -T 2>/dev/null)"; then
-    log_status "failed" "run_ssh_hardening" "sshd -T failed; cannot verify effective config"
-    return 1
+  if grep -Eqs '^[[:space:]]*Match[[:space:]]' /etc/ssh/sshd_config "${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}"/*.conf; then
+    log_warn "sshd has Match blocks: verified for $DEFAULT_USER and root from an outside address only; review other Match conditions by hand"
   fi
 
-  local mismatches=0 pair key want got
-  for pair in "$@"; do
-    key="${pair%%=*}"
-    want="$(sshd_effective_value "$key" "${pair#*=}")"
-    got="$(awk -v k="${key,,}" '$1 == k { print $2; exit }' <<<"$effective")"
-    if [[ "$got" == "$want" ]]; then
-      log_status "ok" "run_ssh_hardening" "effective $key is $got"
-    elif is_plan_mode; then
-      log_status "changed" "run_ssh_hardening" "plan: effective $key is $got, want $want"
+  local mismatches=0 ctx label effective pair key want got ctx_ok
+  for ctx in "" "$(ssh_check_context "$DEFAULT_USER")" "$(ssh_check_context root)"; do
+    label="${ctx:+ for ${ctx%%,*}}"
+    if [[ -n "$ctx" ]]; then
+      effective="$(sshd -T -C "$ctx" 2>/dev/null)" || effective=""
     else
-      log_status "failed" "run_ssh_hardening" "effective $key is $got, want $want (another file in /etc/ssh/sshd_config or sshd_config.d overrides it)"
+      effective="$(sshd -T 2>/dev/null)" || effective=""
+    fi
+    if [[ -z "$effective" ]]; then
+      log_status "failed" "run_ssh_hardening" "sshd -T failed${label}; cannot verify effective config"
       mismatches=$((mismatches + 1))
+      continue
+    fi
+
+    ctx_ok=true
+    for pair in "$@"; do
+      key="${pair%%=*}"
+      want="$(sshd_effective_value "$key" "${pair#*=}")"
+      got="$(awk -v k="${key,,}" '$1 == k { print $2; exit }' <<<"$effective")"
+      [[ "$got" == "$want" ]] && continue
+      ctx_ok=false
+      if is_plan_mode; then
+        log_status "changed" "run_ssh_hardening" "plan: effective $key${label} is $got, want $want"
+      else
+        log_status "failed" "run_ssh_hardening" "effective $key${label} is $got, want $want (another sshd file or a Match block overrides it)"
+        mismatches=$((mismatches + 1))
+      fi
+    done
+    if [[ "$ctx_ok" == "true" ]]; then
+      log_status "ok" "run_ssh_hardening" "effective sshd config matches${label:- (global)}"
     fi
   done
   [[ "$mismatches" -eq 0 ]]
@@ -80,30 +110,52 @@ run_ssh_hardening() {
   local changed=false
 
   local root_login password_auth
-  root_login="$(normalize_bool_to_ssh "${SSH_PERMIT_ROOT_LOGIN:-prohibit-password}")"
+  root_login="$(normalize_bool_to_ssh "${SSH_PERMIT_ROOT_LOGIN:-no}")"
   password_auth="$(normalize_bool_to_ssh "${SSH_PASSWORD_AUTH:-no}")"
+  local options=(
+    "Port=${SSH_PORT:-22}"
+    "PermitRootLogin=$root_login"
+    "PasswordAuthentication=$password_auth"
+    "X11Forwarding=$(normalize_bool_to_ssh "${SSH_X11_FORWARDING:-no}")"
+    "MaxAuthTries=${SSH_MAX_AUTH_TRIES:-3}"
+    "KbdInteractiveAuthentication=$(normalize_bool_to_ssh "${SSH_KBD_INTERACTIVE_AUTH:-no}")"
+  )
+
+  local pair
+  for pair in "${options[@]}"; do
+    if ! ssh_option_value_valid "${pair%%=*}" "${pair#*=}"; then
+      log_status "failed" "run_ssh_hardening" "no changes made: invalid value '${pair#*=}' for ${pair%%=*}"
+      return 1
+    fi
+  done
+
   if [[ "$password_auth" == "no" && ! -s "/home/$DEFAULT_USER/.ssh/authorized_keys" ]]; then
     log_status "failed" "run_ssh_hardening" "no changes made: /home/$DEFAULT_USER/.ssh/authorized_keys is empty, disabling password login would lock out $DEFAULT_USER"
     return 1
   fi
 
-  local expected=(
-    "PermitRootLogin=$root_login"
-    "X11Forwarding=${SSH_X11_FORWARDING:-no}"
-    "MaxAuthTries=${SSH_MAX_AUTH_TRIES:-3}"
-    "KbdInteractiveAuthentication=${SSH_KBD_INTERACTIVE_AUTH:-no}"
-    "PasswordAuthentication=$password_auth"
-  )
+  local root_keys="${SSH_ROOT_AUTHORIZED_KEYS:-/root/.ssh/authorized_keys}"
+  if [[ "$root_login" == "no" && -s "$root_keys" ]]; then
+    local current_root
+    current_root="$(sshd -T -C "$(ssh_check_context root)" 2>/dev/null | awk '$1 == "permitrootlogin" { print $2; exit }')"
+    if [[ "$current_root" != "no" ]]; then
+      log_status "failed" "run_ssh_hardening" "no changes made: root has keys in $root_keys and can log in with them now (permitrootlogin ${current_root:-unknown}); set SSH_PERMIT_ROOT_LOGIN: prohibit-password in hosts/<profile>.local.yml if they are needed (e.g. Forge), or remove them"
+      return 1
+    fi
+  fi
 
   backup_file_if_exists "/etc/ssh/sshd_config"
-  backup_file_if_exists "/etc/ssh/sshd_config.d/00-provision.conf"
+  backup_file_if_exists "${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}/00-provision.conf"
 
-  ensure_sshd_option "Port" "${SSH_PORT:-22}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-  ensure_sshd_option "PermitRootLogin" "$root_login"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-  ensure_sshd_option "PasswordAuthentication" "$password_auth"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-  ensure_sshd_option "X11Forwarding" "${SSH_X11_FORWARDING:-no}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-  ensure_sshd_option "MaxAuthTries" "${SSH_MAX_AUTH_TRIES:-3}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
-  ensure_sshd_option "KbdInteractiveAuthentication" "${SSH_KBD_INTERACTIVE_AUTH:-no}"; [[ "$ENSURE_LAST_STATUS" == "changed" ]] && changed=true
+  local expected=()
+  for pair in "${options[@]}"; do
+    ensure_sshd_option "${pair%%=*}" "${pair#*=}"
+    case "$ENSURE_LAST_STATUS" in
+      changed) changed=true ;;
+      failed) return 1 ;;
+    esac
+    [[ "${pair%%=*}" == "Port" ]] || expected+=("$pair")
+  done
 
   remove_legacy_ssh_dropins
   [[ "$SSH_LEGACY_REMOVED" == "true" ]] && changed=true
@@ -113,6 +165,8 @@ run_ssh_hardening() {
     return 1
   fi
 
+  local verified=true
+  verify_sshd_effective "${expected[@]}" || verified=false
   ensure_service_restarted_if_changed ssh "$changed"
-  verify_sshd_effective "${expected[@]}"
+  [[ "$verified" == "true" ]]
 }

@@ -11,6 +11,7 @@ run_portainer() {
     log_status "failed" "run_portainer" "docker is required"
     return 1
   fi
+  check_docker_engine_version || true
 
   local volume="${PORTAINER_VOLUME_NAME:-portainer_data}"
   local name="${PORTAINER_CONTAINER_NAME:-portainer}"
@@ -103,7 +104,10 @@ run_portainer() {
       elif is_plan_mode; then
         log_status "changed" "run_portainer" "plan: would start stopped container $name"
       else
-        docker start "$name" >/dev/null
+        if ! docker start "$name" >/dev/null; then
+          log_status "failed" "run_portainer" "docker start failed for $name"
+          return 1
+        fi
         log_status "changed" "run_portainer" "started existing container $name"
       fi
     fi
@@ -117,16 +121,20 @@ run_portainer() {
         log_status "changed" "run_portainer" "plan: would run $name container"
       fi
     else
-      if [[ "$container_exists" == "true" ]]; then
-        docker rm -f "$name" >/dev/null 2>&1 || true
+      if [[ "$container_exists" == "true" ]] && ! docker rm -f "$name" >/dev/null 2>&1; then
+        log_status "failed" "run_portainer" "could not remove $name; the old container keeps running with its old port bindings"
+        return 1
       fi
       local publish=(-p "$bind:$https_port:9443")
       [[ -n "$http_port" ]] && publish+=(-p "$bind:$http_port:9000")
-      docker run -d --name "$name" --restart unless-stopped \
+      if ! docker run -d --name "$name" --restart unless-stopped \
         "${publish[@]}" \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v "$volume:/data" \
-        "$image" >/dev/null
+        "$image" >/dev/null; then
+        log_status "failed" "run_portainer" "docker run failed for $name (data is still in volume $volume)"
+        return 1
+      fi
       if [[ "$container_exists" == "true" ]]; then
         log_status "changed" "run_portainer" "recreated $name with desired config"
       else

@@ -1,5 +1,20 @@
 #!/bin/bash
 
+check_docker_engine_version() {
+  local version major
+  version="$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)"
+  major="${version%%.*}"
+  if [[ ! "$major" =~ ^[0-9]+$ ]]; then
+    log_warn "Could not read the Docker engine version"
+    return 0
+  fi
+  if (( major < 28 )); then
+    log_status "failed" "check_docker_engine_version" "Docker $version is older than 28.0.0: ports published on 127.0.0.1 can be reached by neighbouring hosts; upgrade docker-ce"
+    return 1
+  fi
+  log_status "ok" "check_docker_engine_version" "Docker $version"
+}
+
 run_docker() {
   log_info "Running task: docker"
   if [[ "${ENABLE_DOCKER:-true}" =~ ^(false|no|0)$ ]]; then
@@ -40,4 +55,5 @@ run_docker() {
   ensure_user_in_group "$DEFAULT_USER" docker
   ensure_service_enabled docker
   ensure_service_running docker
+  is_plan_mode || check_docker_engine_version || true
 }

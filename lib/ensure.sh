@@ -363,7 +363,7 @@ ensure_ufw_rule() {
 ensure_sshd_option() {
   local key="$1"
   local value="$2"
-  local dropin_dir="/etc/ssh/sshd_config.d"
+  local dropin_dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}"
   local file="${dropin_dir}/00-provision.conf"
 
   local current=""
@@ -398,13 +398,25 @@ ensure_sshd_option() {
     ' "$file" > "$tmp_file"
   fi
   printf '%s %s\n' "$key" "$value" >> "$tmp_file"
+
+  local previous=""
+  if [[ -f "$file" ]]; then
+    previous="$(mktemp)"
+    cp -p "$file" "$previous"
+  fi
   mv "$tmp_file" "$file"
   chmod 0644 "$file"
 
   if sshd -t; then
+    [[ -n "$previous" ]] && rm -f "$previous"
     _set_ensure_status "changed" "ensure_sshd_option" "$key set to $value (drop-in)"
   else
-    _set_ensure_status "failed" "ensure_sshd_option" "invalid sshd config after setting $key"
+    if [[ -n "$previous" ]]; then
+      mv "$previous" "$file"
+    else
+      rm -f "$file"
+    fi
+    _set_ensure_status "failed" "ensure_sshd_option" "invalid sshd config after setting $key $value; previous $file restored"
     return 1
   fi
 }

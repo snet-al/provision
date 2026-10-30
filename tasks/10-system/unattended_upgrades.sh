@@ -1,5 +1,23 @@
 #!/bin/bash
 
+invalid_unattended_patterns() {
+  awk -F'"' '
+    index($1, "Unattended-Upgrade") && index($1, "\\n") { print $1; next }
+    /^Unattended-Upgrade::Origins-Pattern:: / {
+      p = $2
+      gsub(/\\,/, "%2C", p)
+      if (p ~ /^[[:space:]]*$/) next
+      n = split(p, toks, ",")
+      for (i = 1; i <= n; i++) {
+        m = split(toks[i], kv, "=")
+        k = kv[1]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+        if (m != 2 || k !~ /^(o|origin|l|label|a|archive|suite|c|component|n|codename|site)$/) { print $2; break }
+      }
+    }
+  '
+}
+
 run_unattended_upgrades() {
   log_info "Running task: unattended_upgrades"
   ensure_package unattended-upgrades
@@ -27,9 +45,9 @@ run_unattended_upgrades() {
       log_status "failed" "run_unattended_upgrades" "apt config does not parse: $dump"
       return 1
     fi
-    bad_patterns="$(awk -F'"' '/^Unattended-Upgrade::Origins-Pattern:: / && $2 !~ /=/ { print $2 }' <<<"$dump")"
+    bad_patterns="$(invalid_unattended_patterns <<<"$dump")"
     if [[ -n "$bad_patterns" ]]; then
-      log_status "failed" "run_unattended_upgrades" "invalid Origins-Pattern entries left in /etc/apt/apt.conf.d: $bad_patterns"
+      log_status "failed" "run_unattended_upgrades" "unattended-upgrade would reject these Origins-Pattern entries in /etc/apt/apt.conf.d: ${bad_patterns//$'\n'/; }"
       return 1
     fi
     log_status "ok" "run_unattended_upgrades" "apt config valid (auto reboot=${reboot} at ${reboot_time})"
