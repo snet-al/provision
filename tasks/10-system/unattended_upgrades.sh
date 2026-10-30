@@ -1,21 +1,30 @@
 #!/bin/bash
 
 invalid_unattended_patterns() {
-  awk -F'"' '
-    index($1, "Unattended-Upgrade") && index($1, "\\n") { print $1; next }
-    /^Unattended-Upgrade::Origins-Pattern:: / {
-      p = $2
-      gsub(/\\,/, "%2C", p)
-      if (p ~ /^[[:space:]]*$/) next
-      n = split(p, toks, ",")
-      for (i = 1; i <= n; i++) {
-        m = split(toks[i], kv, "=")
-        k = kv[1]
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
-        if (m != 2 || k !~ /^(o|origin|l|label|a|archive|suite|c|component|n|codename|site)$/) { print $2; break }
-      }
-    }
-  '
+  local dump
+  dump="$(cat)"
+  awk -F'"' 'index($1, "Unattended-Upgrade") && index($1, "\\n") { print $1 }' <<<"$dump"
+  awk -F'"' '/^Unattended-Upgrade::Origins-Pattern:: / { print $2 }' <<<"$dump" | python3 -I -c '
+import importlib.machinery, importlib.util, logging, sys, types
+logging.disable(logging.CRITICAL)
+try:
+    loader = importlib.machinery.SourceFileLoader("unattended_upgrade_worker", sys.argv[1])
+    worker = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(worker)
+    check = worker.match_whitelist_string
+except Exception as exc:
+    print("cannot load the unattended-upgrade parser from %s: %s" % (sys.argv[1], exc))
+    sys.exit(0)
+origin = types.SimpleNamespace(origin="", label="", archive="", codename="", component="", site="")
+for line in sys.stdin:
+    pattern = line.rstrip("\n")
+    if not pattern.strip():
+        continue
+    try:
+        check(pattern, origin)
+    except Exception:
+        print(pattern)
+' "${UNATTENDED_UPGRADE_BIN:-/usr/bin/unattended-upgrade}" 2>/dev/null
 }
 
 run_unattended_upgrades() {

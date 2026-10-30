@@ -5,8 +5,8 @@ check_docker_engine_version() {
   version="$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)"
   major="${version%%.*}"
   if [[ ! "$major" =~ ^[0-9]+$ ]]; then
-    log_warn "Could not read the Docker engine version"
-    return 0
+    log_status "failed" "check_docker_engine_version" "could not read the Docker engine version"
+    return 1
   fi
   if (( major < 28 )); then
     log_status "failed" "check_docker_engine_version" "Docker $version is older than 28.0.0: ports published on 127.0.0.1 can be reached by neighbouring hosts; upgrade docker-ce"

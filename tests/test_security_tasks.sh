@@ -44,8 +44,9 @@ remove_legacy_ssh_dropins
 rm -f "$SSH_DROPIN_DIR/99-provision.conf"
 
 SSHD_OPTIONS=()
-ensure_sshd_option() { SSHD_OPTIONS+=("$1 $2"); ENSURE_LAST_STATUS="changed"; }
-ensure_service_restarted_if_changed() { ENSURE_LAST_STATUS="changed"; }
+SSH_RESTARTS=0
+ensure_sshd_option() { SSHD_OPTIONS+=("$1 $2"); printf '%s %s\n' "$1" "$2" >> "$SSH_DROPIN_DIR/00-provision.conf"; ENSURE_LAST_STATUS="changed"; }
+ensure_service_restarted_if_changed() { [[ "$2" == "true" ]] && SSH_RESTARTS=$((SSH_RESTARTS + 1)); ENSURE_LAST_STATUS="changed"; }
 SSHD_EFFECTIVE=$'permitrootlogin no\npasswordauthentication yes\nx11forwarding no\nmaxauthtries 3\nkbdinteractiveauthentication no'
 SSHD_EFFECTIVE_FORGE=""
 SSHD_EFFECTIVE_ROOT=""
@@ -76,19 +77,27 @@ expect_fail run_ssh_hardening
 [[ "${#SSHD_OPTIONS[@]}" == "0" ]]
 unset SSH_X11_FORWARDING
 
-# YAML false/true are normalized to no/yes
+# YAML false/true are normalized to no/yes; a verified change restarts ssh once
 SSH_KBD_INTERACTIVE_AUTH="false"
 SSH_X11_FORWARDING="False"
 run_ssh_hardening
+[[ "$SSH_RESTARTS" == "1" ]]
 printf '%s\n' "${SSHD_OPTIONS[@]}" | grep -Fx "KbdInteractiveAuthentication no" >/dev/null
 printf '%s\n' "${SSHD_OPTIONS[@]}" | grep -Fx "X11Forwarding no" >/dev/null
 unset SSH_KBD_INTERACTIVE_AUTH SSH_X11_FORWARDING
 
-# a Match block that re-enables passwords for forge is caught
+# a Match block that re-enables passwords for forge is caught: drop-ins restored, no restart
 SSHD_EFFECTIVE_FORGE=$'permitrootlogin no\npasswordauthentication no\nx11forwarding no\nmaxauthtries 3\nkbdinteractiveauthentication yes'
 SSH_PASSWORD_AUTH="yes"
+printf 'PermitRootLogin no\n' > "$SSH_DROPIN_DIR/00-provision.conf"
+printf 'PasswordAuthentication no\n' > "$SSH_DROPIN_DIR/00-hardening.conf"
+restarts_before="$SSH_RESTARTS"
 expect_fail run_ssh_hardening
 grep -F "effective KbdInteractiveAuthentication for user=forge is yes, want no" "$LOG_FILE" >/dev/null
+[[ "$SSH_RESTARTS" == "$restarts_before" ]]
+[[ "$(cat "$SSH_DROPIN_DIR/00-provision.conf")" == "PermitRootLogin no" ]]
+[[ "$(cat "$SSH_DROPIN_DIR/00-hardening.conf")" == "PasswordAuthentication no" ]]
+rm -f "$SSH_DROPIN_DIR/00-provision.conf" "$SSH_DROPIN_DIR/00-hardening.conf"
 SSHD_EFFECTIVE_FORGE=""
 
 # root keys in use (e.g. Forge) and PermitRootLogin no: nothing is touched
@@ -106,10 +115,16 @@ unset SSH_PERMIT_ROOT_LOGIN
 
 # Origins-Pattern check follows unattended-upgrade's parser
 good=$'Unattended-Upgrade::Origins-Pattern:: "origin=Ubuntu,archive=noble-security";\nUnattended-Upgrade::Origins-Pattern:: "o=Ubuntu,a=noble-updates";'
-[[ -z "$(invalid_unattended_patterns <<<"$good")" ]]
-for bad in 'origin=Ubuntu,archive=noble-security,broken' '\n' 'origin=Ubuntu=x' 'foo=bar'; do
-  [[ -n "$(invalid_unattended_patterns <<<"Unattended-Upgrade::Origins-Pattern:: \"$bad\";")" ]]
-done
+if [[ -x "${UNATTENDED_UPGRADE_BIN:-/usr/bin/unattended-upgrade}" ]]; then
+  good+=$'\nUnattended-Upgrade::Origins-Pattern:: "origin=${distro_id},archive=${distro_codename}-security";'
+  [[ -z "$(invalid_unattended_patterns <<<"$good")" ]]
+  for bad in 'origin=Ubuntu,archive=noble-security,broken' '\n' 'origin=Ubuntu=x' 'foo=bar' 'origin=Ubuntu,archive=${unknown}' 'origin=Ubuntu,archive=$'; do
+    [[ -n "$(invalid_unattended_patterns <<<"Unattended-Upgrade::Origins-Pattern:: \"$bad\";")" ]]
+  done
+else
+  echo "unattended-upgrade not installed: skipping parser checks"
+fi
+[[ -n "$(UNATTENDED_UPGRADE_BIN=/nonexistent invalid_unattended_patterns <<<"$good")" ]]
 
 # fail2ban: a failed reload is retried on the next run even though the file is unchanged
 ensure_package() { ENSURE_LAST_STATUS="ok"; }
@@ -143,11 +158,13 @@ run_fail2ban
 DOCKER_RM_OK=0
 DOCKER_RUN_OK=1
 DOCKER_RUN_CALLS=0
+DOCKER_VERSION=29.4.1
+DOCKER_HAS_PORTAINER=1
 docker() {
   case "$1" in
-    version) echo 29.4.1 ;;
+    version) [[ -n "$DOCKER_VERSION" ]] && echo "$DOCKER_VERSION" ;;
     volume) echo portainer_data ;;
-    ps) echo portainer ;;
+    ps) [[ "$DOCKER_HAS_PORTAINER" == "1" ]] && echo portainer ;;
     inspect)
       case "$3" in
         '{{.Config.Image}}') echo portainer/portainer-ce:latest ;;
@@ -169,5 +186,20 @@ DOCKER_RUN_OK=0
 expect_fail run_portainer
 [[ "$DOCKER_RUN_CALLS" == "1" ]]
 ! grep -F "recreated portainer" "$LOG_FILE" >/dev/null || { echo "portainer reported as recreated"; exit 1; }
+
+# old or unreadable engine: no new Portainer is created; a running public one is still moved to 127.0.0.1
+DOCKER_RUN_OK=1
+for version in 27.5.1 ""; do
+  DOCKER_VERSION="$version"
+  DOCKER_HAS_PORTAINER=0
+  DOCKER_RUN_CALLS=0
+  expect_fail run_portainer
+  [[ "$DOCKER_RUN_CALLS" == "0" ]]
+done
+DOCKER_VERSION=27.5.1
+DOCKER_HAS_PORTAINER=1
+DOCKER_RUN_CALLS=0
+expect_fail run_portainer
+[[ "$DOCKER_RUN_CALLS" == "1" ]]
 
 echo "test_security_tasks.sh passed"

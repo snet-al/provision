@@ -42,6 +42,30 @@ ssh_dropin_unmanaged_keys() {
   ' "$1" | sort -u | tr '\n' ' '
 }
 
+ssh_dropin_names() {
+  echo "00-provision.conf ${SSH_LEGACY_DROPINS:-99-provision.conf 00-hardening.conf}"
+}
+
+ssh_snapshot_dropins() {
+  local snapshot="$1" dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}" name
+  for name in $(ssh_dropin_names); do
+    if [[ -f "$dir/$name" ]]; then
+      cp -p "$dir/$name" "$snapshot/$name"
+    fi
+  done
+}
+
+ssh_restore_dropins() {
+  local snapshot="$1" dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}" name
+  for name in $(ssh_dropin_names); do
+    if [[ -f "$snapshot/$name" ]]; then
+      cp -p "$snapshot/$name" "$dir/$name"
+    else
+      rm -f "$dir/$name"
+    fi
+  done
+}
+
 remove_legacy_ssh_dropins() {
   local name path unmanaged
   SSH_LEGACY_REMOVED=false
@@ -147,26 +171,41 @@ run_ssh_hardening() {
   backup_file_if_exists "/etc/ssh/sshd_config"
   backup_file_if_exists "${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}/00-provision.conf"
 
-  local expected=()
+  local snapshot
+  snapshot="$(mktemp -d)"
+  ssh_snapshot_dropins "$snapshot"
+
+  local expected=() failure=""
   for pair in "${options[@]}"; do
     ensure_sshd_option "${pair%%=*}" "${pair#*=}"
     case "$ENSURE_LAST_STATUS" in
       changed) changed=true ;;
-      failed) return 1 ;;
+      failed) failure="could not set ${pair%%=*}"; break ;;
     esac
     [[ "${pair%%=*}" == "Port" ]] || expected+=("$pair")
   done
 
-  remove_legacy_ssh_dropins
-  [[ "$SSH_LEGACY_REMOVED" == "true" ]] && changed=true
+  if [[ -z "$failure" ]]; then
+    remove_legacy_ssh_dropins
+    [[ "$SSH_LEGACY_REMOVED" == "true" ]] && changed=true
+    if [[ "$changed" == "true" ]] && ! is_plan_mode && ! sshd -t; then
+      failure="sshd -t rejected the new config"
+    fi
+  fi
 
-  if [[ "$changed" == "true" ]] && ! is_plan_mode && ! sshd -t; then
-    log_status "failed" "run_ssh_hardening" "sshd -t failed; not restarting ssh"
+  if [[ -z "$failure" ]] && ! verify_sshd_effective "${expected[@]}"; then
+    failure="effective config does not match"
+  fi
+
+  if [[ -n "$failure" ]]; then
+    if ! is_plan_mode; then
+      ssh_restore_dropins "$snapshot"
+    fi
+    rm -rf -- "$snapshot"
+    log_status "failed" "run_ssh_hardening" "$failure; previous sshd drop-ins restored, ssh not restarted"
     return 1
   fi
 
-  local verified=true
-  verify_sshd_effective "${expected[@]}" || verified=false
+  rm -rf -- "$snapshot"
   ensure_service_restarted_if_changed ssh "$changed"
-  [[ "$verified" == "true" ]]
 }

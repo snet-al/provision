@@ -11,7 +11,8 @@ run_portainer() {
     log_status "failed" "run_portainer" "docker is required"
     return 1
   fi
-  check_docker_engine_version || true
+  local engine_ok=true
+  check_docker_engine_version || engine_ok=false
 
   local volume="${PORTAINER_VOLUME_NAME:-portainer_data}"
   local name="${PORTAINER_CONTAINER_NAME:-portainer}"
@@ -31,6 +32,7 @@ run_portainer() {
   fi
 
   local container_exists=false
+  local running_state=""
   if docker ps -a --format '{{.Names}}' | grep -Fx "$name" >/dev/null 2>&1; then
     container_exists=true
   fi
@@ -47,7 +49,7 @@ run_portainer() {
   fi
 
   if [[ "$container_exists" == "true" ]]; then
-    local current_image current_image_id restart_policy running_state
+    local current_image current_image_id restart_policy
     current_image="$(docker inspect --format '{{.Config.Image}}' "$name" 2>/dev/null || true)"
     current_image_id="$(docker inspect --format '{{.Image}}' "$name" 2>/dev/null || true)"
     restart_policy="$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' "$name" 2>/dev/null || true)"
@@ -101,6 +103,9 @@ run_portainer() {
     if [[ "$needs_recreate" == "false" ]]; then
       if [[ "$running_state" == "true" ]]; then
         log_status "ok" "run_portainer" "container $name already healthy"
+      elif [[ "$engine_ok" != "true" ]]; then
+        log_status "failed" "run_portainer" "not starting stopped $name: Docker engine is older than 28.0.0 or unreadable"
+        return 1
       elif is_plan_mode; then
         log_status "changed" "run_portainer" "plan: would start stopped container $name"
       else
@@ -114,6 +119,10 @@ run_portainer() {
   fi
 
   if [[ "$container_exists" == "false" || "$needs_recreate" == "true" ]]; then
+    if [[ "$engine_ok" != "true" ]] && ! [[ "$container_exists" == "true" && "$running_state" == "true" ]]; then
+      log_status "failed" "run_portainer" "not creating $name: Docker engine is older than 28.0.0 or unreadable"
+      return 1
+    fi
     if is_plan_mode; then
       if [[ "$container_exists" == "true" ]]; then
         log_status "changed" "run_portainer" "plan: would recreate $name"
@@ -142,4 +151,6 @@ run_portainer() {
       fi
     fi
   fi
+
+  [[ "$engine_ok" == "true" ]]
 }
