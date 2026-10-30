@@ -48,22 +48,28 @@ ssh_dropin_names() {
 
 ssh_snapshot_dropins() {
   local snapshot="$1" dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}" name
+  : > "$snapshot/.present" || return 1
   for name in $(ssh_dropin_names); do
     if [[ -f "$dir/$name" ]]; then
-      cp -p "$dir/$name" "$snapshot/$name"
+      cp -p "$dir/$name" "$snapshot/$name" || return 1
+      cmp -s "$dir/$name" "$snapshot/$name" || return 1
+      printf '%s\n' "$name" >> "$snapshot/.present" || return 1
     fi
   done
+  : > "$snapshot/.complete" || return 1
 }
 
 ssh_restore_dropins() {
-  local snapshot="$1" dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}" name
+  local snapshot="$1" dir="${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}" name restore_failed=false
+  [[ -f "$snapshot/.complete" ]] || return 1
   for name in $(ssh_dropin_names); do
-    if [[ -f "$snapshot/$name" ]]; then
-      cp -p "$snapshot/$name" "$dir/$name"
+    if grep -Fx -- "$name" "$snapshot/.present" >/dev/null; then
+      cp -p "$snapshot/$name" "$dir/$name" || restore_failed=true
     else
-      rm -f "$dir/$name"
+      rm -f "$dir/$name" || restore_failed=true
     fi
   done
+  [[ "$restore_failed" == "false" ]]
 }
 
 remove_legacy_ssh_dropins() {
@@ -171,9 +177,12 @@ run_ssh_hardening() {
   backup_file_if_exists "/etc/ssh/sshd_config"
   backup_file_if_exists "${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d}/00-provision.conf"
 
-  local snapshot
-  snapshot="$(mktemp -d)"
-  ssh_snapshot_dropins "$snapshot"
+  local snapshot=""
+  if ! snapshot="$(mktemp -d)" || ! ssh_snapshot_dropins "$snapshot"; then
+    [[ -n "$snapshot" ]] && rm -rf -- "$snapshot"
+    log_status "failed" "run_ssh_hardening" "no changes made: could not snapshot the current sshd drop-ins"
+    return 1
+  fi
 
   local expected=() failure=""
   for pair in "${options[@]}"; do
@@ -198,11 +207,15 @@ run_ssh_hardening() {
   fi
 
   if [[ -n "$failure" ]]; then
-    if ! is_plan_mode; then
-      ssh_restore_dropins "$snapshot"
+    if is_plan_mode; then
+      rm -rf -- "$snapshot"
+      log_status "failed" "run_ssh_hardening" "$failure"
+    elif ssh_restore_dropins "$snapshot"; then
+      rm -rf -- "$snapshot"
+      log_status "failed" "run_ssh_hardening" "$failure; previous sshd drop-ins restored, ssh not restarted"
+    else
+      log_status "failed" "run_ssh_hardening" "$failure; RESTORE FAILED, ssh not restarted; the previous drop-ins are kept in $snapshot (list: $snapshot/.present), copy them back to ${SSH_DROPIN_DIR:-/etc/ssh/sshd_config.d} before any ssh restart or reboot"
     fi
-    rm -rf -- "$snapshot"
-    log_status "failed" "run_ssh_hardening" "$failure; previous sshd drop-ins restored, ssh not restarted"
     return 1
   fi
 

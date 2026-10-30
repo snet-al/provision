@@ -195,7 +195,7 @@ Enables automatic background security patching via APT.
 - Removes the old `provision:unattended-upgrades` block from `50unattended-upgrades` (older runs wrote it on one line with literal `\n`, which crashes `unattended-upgrade`)
 - Writes `/etc/apt/apt.conf.d/52provision-unattended-upgrades` — security + updates origins and the automatic reboot policy
 - Writes `/etc/apt/apt.conf.d/20auto-upgrades` — enables daily package list refresh and unattended upgrade
-- Fails if `apt-config dump` errors or any `Origins-Pattern` entry is rejected by the installed `unattended-upgrade` parser (including `${...}` substitution), or that parser cannot be loaded
+- Fails if `apt-config dump` errors or any `Origins-Pattern` entry is rejected by the installed `unattended-upgrade` parser (including `${...}` substitution), or that parser cannot be loaded or run
 - Adds a cron job `0 3 * * *` that runs `unattended-upgrade -v`
 - Enables and starts the `unattended-upgrades` service
 
@@ -235,7 +235,7 @@ Enforces a hardened SSH daemon configuration.
 - Normalizes yes/no values (YAML `false` → `no`) and stops before changing anything when a value is invalid
 - Stops before changing anything when `PasswordAuthentication no` is wanted but `DEFAULT_USER` has no `authorized_keys`
 - Stops before changing anything when `PermitRootLogin no` is wanted but root has keys it can log in with now (e.g. Forge); set `SSH_PERMIT_ROOT_LOGIN: prohibit-password` in that host's `.local.yml` if they are needed
-- Snapshots its drop-ins first; when `sshd -t` rejects the result or the effective config does not match, restores them and does not restart `ssh`
+- Snapshots its drop-ins first and makes no changes if the snapshot cannot be taken; when `sshd -t` rejects the result or the effective config does not match, restores them and does not restart `ssh`. If the restore itself fails, the snapshot is kept and its path is logged
 - Removes legacy drop-ins listed in `SSH_LEGACY_DROPINS` only when they contain nothing but options this task manages; otherwise keeps them and warns
 - Restarts `ssh` only when at least one value actually changed
 - Verifies the effective values with `sshd -T`, and with `sshd -T -C` as `DEFAULT_USER` and as root so `Match` blocks are applied; fails if anything overrides them and warns when other `Match` blocks exist

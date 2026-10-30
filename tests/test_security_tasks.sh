@@ -63,6 +63,39 @@ SSH_PASSWORD_AUTH="yes"
 SSH_ROOT_AUTHORIZED_KEYS="$TMP/root_keys"
 : > "$SSH_ROOT_AUTHORIZED_KEYS"
 
+# snapshot that cannot be taken: nothing is touched, existing restrictions stay
+CLIENT_RULES=$'AllowUsers forge deploy\nAuthenticationMethods publickey,password'
+printf '%s\n' "$CLIENT_RULES" > "$SSH_DROPIN_DIR/99-provision.conf"
+printf 'PasswordAuthentication no\n' > "$SSH_DROPIN_DIR/00-hardening.conf"
+cp() { return 1; }
+expect_fail run_ssh_hardening
+unset -f cp
+[[ "${#SSHD_OPTIONS[@]}" == "0" ]]
+[[ "$(cat "$SSH_DROPIN_DIR/99-provision.conf")" == "$CLIENT_RULES" ]]
+[[ "$(cat "$SSH_DROPIN_DIR/00-hardening.conf")" == "PasswordAuthentication no" ]]
+grep -F "could not snapshot the current sshd drop-ins" "$LOG_FILE" >/dev/null
+
+# restore that fails: snapshot is kept and the log says so
+SSHD_EFFECTIVE_FORGE=$'permitrootlogin no\npasswordauthentication yes\nx11forwarding no\nmaxauthtries 3\nkbdinteractiveauthentication yes'
+cp() { [[ "${*: -1}" == "$SSH_DROPIN_DIR"/* ]] && return 1; command cp "$@"; }
+expect_fail run_ssh_hardening
+unset -f cp
+kept="$(grep -o 'kept in [^ ]*' "$LOG_FILE" | tail -1)"
+kept="${kept#kept in }"
+[[ -f "$kept/99-provision.conf" && -f "$kept/.present" ]]
+[[ "$(cat "$kept/99-provision.conf")" == "$CLIENT_RULES" ]]
+rm -rf -- "$kept" "$SSH_DROPIN_DIR/99-provision.conf" "$SSH_DROPIN_DIR/00-hardening.conf" "$SSH_DROPIN_DIR/00-provision.conf"
+SSHD_EFFECTIVE_FORGE=""
+SSHD_OPTIONS=()
+
+# an incomplete snapshot is never used to restore
+printf '%s\n' "$CLIENT_RULES" > "$SSH_DROPIN_DIR/99-provision.conf"
+partial="$TMP/partial-snapshot"
+mkdir -p "$partial"
+expect_fail ssh_restore_dropins "$partial"
+[[ "$(cat "$SSH_DROPIN_DIR/99-provision.conf")" == "$CLIENT_RULES" ]]
+rm -f "$SSH_DROPIN_DIR/99-provision.conf"
+
 # missing forge keys: nothing is touched
 DEFAULT_USER="no-such-user-$$"
 SSH_PASSWORD_AUTH="no"
@@ -124,7 +157,16 @@ if [[ -x "${UNATTENDED_UPGRADE_BIN:-/usr/bin/unattended-upgrade}" ]]; then
 else
   echo "unattended-upgrade not installed: skipping parser checks"
 fi
-[[ -n "$(UNATTENDED_UPGRADE_BIN=/nonexistent invalid_unattended_patterns <<<"$good")" ]]
+expect_fail eval 'UNATTENDED_UPGRADE_BIN=/nonexistent invalid_unattended_patterns <<<"$good" >/dev/null'
+
+# a parser process that fails without output is a failure, not "valid"
+apt-config() { printf '%s\n' "$good"; }
+python3() { cat >/dev/null; return 1; }
+failed_before="$SUMMARY_FAILED"
+expect_fail validate_unattended_config
+[[ "$SUMMARY_FAILED" -gt "$failed_before" ]]
+grep -F "could not run the unattended-upgrade parser" "$LOG_FILE" >/dev/null
+unset -f python3 apt-config
 
 # fail2ban: a failed reload is retried on the next run even though the file is unchanged
 ensure_package() { ENSURE_LAST_STATUS="ok"; }

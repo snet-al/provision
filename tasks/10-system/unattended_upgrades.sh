@@ -13,8 +13,8 @@ try:
     loader.exec_module(worker)
     check = worker.match_whitelist_string
 except Exception as exc:
-    print("cannot load the unattended-upgrade parser from %s: %s" % (sys.argv[1], exc))
-    sys.exit(0)
+    sys.stderr.write("cannot load the unattended-upgrade parser from %s: %s\n" % (sys.argv[1], exc))
+    sys.exit(2)
 origin = types.SimpleNamespace(origin="", label="", archive="", codename="", component="", site="")
 for line in sys.stdin:
     pattern = line.rstrip("\n")
@@ -25,6 +25,24 @@ for line in sys.stdin:
     except Exception:
         print(pattern)
 ' "${UNATTENDED_UPGRADE_BIN:-/usr/bin/unattended-upgrade}" 2>/dev/null
+  local status=("${PIPESTATUS[@]}")
+  [[ "${status[0]}" == "0" && "${status[1]}" == "0" ]]
+}
+
+validate_unattended_config() {
+  local dump bad_patterns
+  if ! dump="$(apt-config dump 2>&1)"; then
+    log_status "failed" "run_unattended_upgrades" "apt config does not parse: $dump"
+    return 1
+  fi
+  if ! bad_patterns="$(invalid_unattended_patterns <<<"$dump")"; then
+    log_status "failed" "run_unattended_upgrades" "could not run the unattended-upgrade parser (python3 with ${UNATTENDED_UPGRADE_BIN:-/usr/bin/unattended-upgrade}); Origins-Pattern entries are not validated"
+    return 1
+  fi
+  if [[ -n "$bad_patterns" ]]; then
+    log_status "failed" "run_unattended_upgrades" "unattended-upgrade would reject these Origins-Pattern entries in /etc/apt/apt.conf.d: ${bad_patterns//$'\n'/; }"
+    return 1
+  fi
 }
 
 run_unattended_upgrades() {
@@ -49,16 +67,7 @@ run_unattended_upgrades() {
   ensure_block_in_file "$file20" "provision:auto-upgrades" "$content20"
 
   if ! is_plan_mode; then
-    local dump bad_patterns
-    if ! dump="$(apt-config dump 2>&1)"; then
-      log_status "failed" "run_unattended_upgrades" "apt config does not parse: $dump"
-      return 1
-    fi
-    bad_patterns="$(invalid_unattended_patterns <<<"$dump")"
-    if [[ -n "$bad_patterns" ]]; then
-      log_status "failed" "run_unattended_upgrades" "unattended-upgrade would reject these Origins-Pattern entries in /etc/apt/apt.conf.d: ${bad_patterns//$'\n'/; }"
-      return 1
-    fi
+    validate_unattended_config || return 1
     log_status "ok" "run_unattended_upgrades" "apt config valid (auto reboot=${reboot} at ${reboot_time})"
   fi
 
